@@ -443,6 +443,11 @@ impl product_tracking::Trait for Runtime {
     type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
 }
 
+impl orderbook::Trait for Runtime {
+    type Event = Event;
+    // type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
+}
+
 impl rbac::Trait for Runtime {
     type Event = Event;
     type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
@@ -498,6 +503,7 @@ construct_runtime!(
         ProductTracking: product_tracking::{Module, Call, Storage, Event<T>},
         Registrar: registrar::{Module, Call, Storage, Event<T>, Config<T>},
         Rbac: rbac::{Module, Call, Storage, Event<T>, Config<T>},
+        Orderbook: orderbook::{Module, Call, Storage, Event<T>, Config<T>},
     }
 );
 

@@ -1262,6 +1262,7 @@ dependencies = [
  "pallet-did",
  "pallet-elections-phragmen",
  "pallet-grandpa",
+ "pallet-orderbook",
  "pallet-product-registry",
  "pallet-product-tracking",
  "pallet-randomness-collective-flip",
@@ -3838,6 +3839,19 @@ dependencies = [
  "sp-session",
  "sp-staking",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-orderbook"
+version = "2.0.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -7038,7 +7052,7 @@ dependencies = [
 [[package]]
 name = "substrate-validator-set"
 version = "0.2.0"
-source = "git+https://github.com/gautamdhameja/substrate-validator-set?branch=master#0d0953e6bcd34b1b9c5dd0e8f1255642d1d216d9"
+source = "git+https://github.com/gautamdhameja/substrate-validator-set#0d0953e6bcd34b1b9c5dd0e8f1255642d1d216d9"
 dependencies = [
  "frame-support",
  "frame-system",
