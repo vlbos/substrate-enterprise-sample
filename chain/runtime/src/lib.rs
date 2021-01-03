@@ -443,11 +443,6 @@ impl product_tracking::Trait for Runtime {
     type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
 }
 
-impl orderbook::Trait for Runtime {
-    type Event = Event;
-    // type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
-}
-
 impl rbac::Trait for Runtime {
     type Event = Event;
     type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
@@ -478,6 +473,15 @@ where
     type Extrinsic = UncheckedExtrinsic;
 }
 
+impl sum_storage::Trait for Runtime {
+	type Event = Event;
+
+}
+impl orderbook::Trait for Runtime {
+    type Event = Event;
+    // type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
+}
+
 construct_runtime!(
     pub enum Runtime where
         Block = Block,
@@ -503,7 +507,8 @@ construct_runtime!(
         ProductTracking: product_tracking::{Module, Call, Storage, Event<T>},
         Registrar: registrar::{Module, Call, Storage, Event<T>, Config<T>},
         Rbac: rbac::{Module, Call, Storage, Event<T>, Config<T>},
-        Orderbook: orderbook::{Module, Call, Storage, Event<T>, Config<T>},
+        Orderbook: orderbook::{Module, Call, Storage, Event<T>},
+		SumStorage: sum_storage::{Module, Call, Storage, Event},
     }
 );
 
@@ -664,4 +669,14 @@ impl_runtime_apis! {
             TransactionPayment::query_info(uxt, len)
         }
     }
+
+	impl sum_storage_runtime_api::SumStorageApi<Block> for Runtime {
+		fn get_sum() -> u32 {
+			// This Runtime API calls into a specific pallet. Calling a pallet is a common
+			// design pattern. You can see most other APIs in this file do the same.
+			// It is also possible to write your logic right here in the runtime
+			// amalgamator file
+			SumStorage::get_sum()
+		}
+	}
 }

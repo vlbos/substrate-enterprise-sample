@@ -88,6 +88,20 @@ package = 'pallet-registrar'
 path = '../pallets/registrar'
 version = '2.0.0'
 
+[dependencies.sum-storage-runtime-api]
+default-features = false
+package = 'sum-storage-runtime-api'
+path = '../pallets/sum-storage/runtime-api'
+version = '2.0.0'
+
+[dependencies.sum-storage]
+default-features = false
+package = 'sum-storage'
+path = '../pallets/sum-storage'
+version = '2.0.0'
+
+
+
 [dependencies.validatorset]
 default-features = false
 git = 'https://github.com/gautamdhameja/substrate-validator-set'
@@ -134,5 +148,7 @@ std = [
 	'validatorset/std',
 	'rbac/std',
 	'registrar/std',
-    'orderbook/std'
+    'orderbook/std',
+  	"sum-storage-runtime-api/std",
+	"sum-storage/std",
 ]

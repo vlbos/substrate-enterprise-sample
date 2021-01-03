@@ -6,7 +6,7 @@ use codec::{Decode, Encode};
 use core::result::Result;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,
-    sp_std::prelude::*, 
+    sp_std::prelude::*,
 };
 // traits::EnsureOrigin,
 use frame_system::{self as system, ensure_signed};
@@ -35,6 +35,7 @@ pub type FieldValue = Vec<u8>;
 // It can also be used for instance-level (lot) master data.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct OrderJSONType<AccountId, Moment> {
+    index: u64,
     // The order ID would typically be a GS1 GTIN (Global Trade Item Number),
     // or ASIN (Amazon Standard Identification Number), or similar,
     // a numeric or alpha-numeric code with a well-defined data structure.
@@ -83,8 +84,9 @@ pub trait Trait: system::Trait + timestamp::Trait {
 
 decl_storage! {
     trait Store for Module<T: Trait> as OrderRegistry {
+        NextOrderIndex: u64;
         pub Orders get(fn order_by_id): map hasher(blake2_128_concat) OrderId => Option<OrderJSONType<T::AccountId, T::Moment>>;
-        pub OrdersOfOrganization get(fn orders_of_org): map hasher(blake2_128_concat) T::AccountId => Vec<OrderId>;
+        pub OrdersOfOrganization get(fn orders_of_org): map hasher(blake2_128_concat) (Vec<u8>,Vec<u8>) => Vec<u64>;
         pub OwnerOf get(fn owner_of): map hasher(blake2_128_concat) OrderId => Option<T::AccountId>;
     }
 }
@@ -128,9 +130,36 @@ decl_module! {
             // Check order doesn't exist yet (1 DB read)
             Self::validate_new_order(&id)?;
 
+
+
             // TODO: if organization has an attribute w/ GS1 Company prefix,
             //       additional validation could be applied to the order ID
             //       to ensure its validity (same company prefix as org).
+
+            // Generate next collection ID
+            let next_id = NextOrderIndex::get()
+                .checked_add(1)
+                .expect("order id error");
+
+            NextOrderIndex::put(next_id);
+
+if let Some(fields) = &fields {
+            for field in fields {
+            let mut index_arr: Vec<u64> = Vec::new();
+
+            if <OrdersOfOrganization>::contains_key((field.name(),field.value()))
+            {
+                index_arr = <OrdersOfOrganization>::get((field.name(),field.value()));
+                ensure!(!index_arr.contains(&next_id), "Account already has admin role");
+            }
+
+            index_arr.push(next_id);
+            <OrdersOfOrganization>::insert((field.name(),field.value()), index_arr);
+
+    //   <OrdersOfOrganization<T>>::append(&field, &next_id);
+            }
+   }
+
 
             // Create a order instance
             let order = Self::new_order()
@@ -142,8 +171,10 @@ decl_module! {
 
             // Add order & ownerOf (3 DB writes)
             <Orders<T>>::insert(&id, order);
-            <OrdersOfOrganization<T>>::append(&owner, &id);
-            <OwnerOf<T>>::insert(&id, &owner);
+            // <OrdersOfOrganization<T>>::append(&owner, &id);
+
+
+               <OwnerOf<T>>::insert(&id, &owner);
 
             Self::deposit_event(RawEvent::OrderPosted(who, id, owner));
 
@@ -151,6 +182,10 @@ decl_module! {
         }
     }
 }
+
+// fn accounts() -> BTreeSet<T::AccountId> {
+// 		Self::members().into_iter().collect::<BTreeSet<_>>()
+// 	}
 
 impl<T: Trait> Module<T> {
     // Helper methods
@@ -161,19 +196,13 @@ impl<T: Trait> Module<T> {
     pub fn validate_order_id(id: &[u8]) -> Result<(), Error<T>> {
         // Basic order ID validation
         ensure!(!id.is_empty(), Error::<T>::OrderIdMissing);
-        ensure!(
-            id.len() <= ORDER_ID_MAX_LENGTH,
-            Error::<T>::OrderIdTooLong
-        );
+        ensure!(id.len() <= ORDER_ID_MAX_LENGTH, Error::<T>::OrderIdTooLong);
         Ok(())
     }
 
     pub fn validate_new_order(id: &[u8]) -> Result<(), Error<T>> {
         // Order existence check
-        ensure!(
-            !<Orders<T>>::contains_key(id),
-            Error::<T>::OrderIdExists
-        );
+        ensure!(!<Orders<T>>::contains_key(id), Error::<T>::OrderIdExists);
         Ok(())
     }
 
@@ -204,6 +233,7 @@ where
     AccountId: Default,
     Moment: Default,
 {
+    index: u64,
     id: OrderId,
     owner: AccountId,
     fields: Option<Vec<OrderField>>,
@@ -215,6 +245,11 @@ where
     AccountId: Default,
     Moment: Default,
 {
+    pub fn index_by(mut self, index: u64) -> Self {
+        self.index = index;
+        self
+    }
+
     pub fn identified_by(mut self, id: OrderId) -> Self {
         self.id = id;
         self
@@ -237,6 +272,7 @@ where
 
     pub fn build(self) -> OrderJSONType<AccountId, Moment> {
         OrderJSONType::<AccountId, Moment> {
+            index: self.index,
             id: self.id,
             owner: self.owner,
             fields: self.fields,
