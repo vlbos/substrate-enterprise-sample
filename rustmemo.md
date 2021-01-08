@@ -8,7 +8,9 @@ SKIP_WASM_BUILD=1 cargo test
 ```
 
 
-
+```
+rustfmt src/lib.rs 
+```
 
 
 1. Install Rust:

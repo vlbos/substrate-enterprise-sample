@@ -6,7 +6,7 @@ use codec::{Decode, Encode};
 use core::result::Result;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,
-    sp_std::prelude::*,
+    sp_std::collections::btree_set::BTreeSet, sp_std::prelude::*,
 };
 // traits::EnsureOrigin,
 use frame_system::{self as system, ensure_signed};
@@ -51,6 +51,35 @@ pub struct OrderJSONType<AccountId, Moment> {
     registered: Moment,
 }
 
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub struct OrderQuery<AccountId> {
+    limit: Option<u64>,
+    offset: Option<u64>,
+
+    owner: Option<AccountId>,
+
+    token_ids: Option<Vec<Vec<u8>>>,
+
+    params: Option<Vec<OrderField>>,
+}
+
+//   owner?: string,
+//   sale_kind?: SaleKind,
+//   asset_contract_address?: string,
+//   payment_token_address?: string,
+//   is_english?: boolean
+//   is_expired?: boolean
+//   bundled?: boolean
+//   include_invalid?: boolean
+//   token_id?: number | string
+//   token_ids?: Array<number | string>
+//   // This means listing_time > value in seconds
+//   listed_after?: number | string
+//   // This means listing_time <= value in seconds
+//   listed_before?: number | string
+//   limit?: number
+//   offset?: number
+
 // Contains a name-value pair for a order fielderty e.g. description: Ingredient ABC
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct OrderField {
@@ -85,8 +114,9 @@ pub trait Trait: system::Trait + timestamp::Trait {
 decl_storage! {
     trait Store for Module<T: Trait> as OrderRegistry {
         NextOrderIndex: u64;
-        pub Orders get(fn order_by_id): map hasher(blake2_128_concat) OrderId => Option<OrderJSONType<T::AccountId, T::Moment>>;
-        pub OrdersOfOrganization get(fn orders_of_org): map hasher(blake2_128_concat) (Vec<u8>,Vec<u8>) => Vec<u64>;
+        pub Orders get(fn order_by_index): map hasher(blake2_128_concat) u64 => Option<OrderJSONType<T::AccountId, T::Moment>>;
+        pub Orderi get(fn order_by_id): map hasher(blake2_128_concat) OrderId => u64;
+        pub OrdersOfOrganization get(fn orders_of_org): double_map hasher(blake2_128_concat) Vec<u8>, hasher(blake2_128_concat) Vec<u8>  => Vec<u64>;
         pub OwnerOf get(fn owner_of): map hasher(blake2_128_concat) OrderId => Option<T::AccountId>;
     }
 }
@@ -147,14 +177,14 @@ if let Some(fields) = &fields {
             for field in fields {
             let mut index_arr: Vec<u64> = Vec::new();
 
-            if <OrdersOfOrganization>::contains_key((field.name(),field.value()))
+            if <OrdersOfOrganization>::contains_key(field.name(),field.value())
             {
-                index_arr = <OrdersOfOrganization>::get((field.name(),field.value()));
+                index_arr = <OrdersOfOrganization>::get(field.name(),field.value());
                 ensure!(!index_arr.contains(&next_id), "Account already has admin role");
             }
 
             index_arr.push(next_id);
-            <OrdersOfOrganization>::insert((field.name(),field.value()), index_arr);
+            <OrdersOfOrganization>::insert(field.name(),field.value(), index_arr);
 
     //   <OrdersOfOrganization<T>>::append(&field, &next_id);
             }
@@ -170,7 +200,8 @@ if let Some(fields) = &fields {
                 .build();
 
             // Add order & ownerOf (3 DB writes)
-            <Orders<T>>::insert(&id, order);
+            <Orders<T>>::insert(next_id, order);
+            <Orderi>::insert(&id, next_id);
             // <OrdersOfOrganization<T>>::append(&owner, &id);
 
 
@@ -182,10 +213,6 @@ if let Some(fields) = &fields {
         }
     }
 }
-
-// fn accounts() -> BTreeSet<T::AccountId> {
-// 		Self::members().into_iter().collect::<BTreeSet<_>>()
-// 	}
 
 impl<T: Trait> Module<T> {
     // Helper methods
@@ -202,7 +229,7 @@ impl<T: Trait> Module<T> {
 
     pub fn validate_new_order(id: &[u8]) -> Result<(), Error<T>> {
         // Order existence check
-        ensure!(!<Orders<T>>::contains_key(id), Error::<T>::OrderIdExists);
+        ensure!(!<Orderi>::contains_key(id), Error::<T>::OrderIdExists);
         Ok(())
     }
 
@@ -225,7 +252,75 @@ impl<T: Trait> Module<T> {
         }
         Ok(())
     }
+
+    pub fn get_orders(
+        order_query: &Option<OrderQuery<T>>,
+    ) -> Option<Vec<OrderJSONType<T::AccountId, T::Moment>>> {
+        let mut order_arr: Vec<OrderJSONType<T::AccountId, T::Moment>> = Vec::new();
+        // let mut index_arr: Vec<u64> = Vec::new();
+        let mut order: BTreeSet<u64> = BTreeSet::new();
+        if let Some(order_query) = order_query {
+            if let Some(params) = &order_query.params {
+                if params.len() <= ORDER_MAX_FIELDS {
+                    return Some(order_arr);
+                }
+                for field in params {
+                    if <OrdersOfOrganization>::contains_key(field.name(), field.value()) {
+                        let index_arr = <OrdersOfOrganization>::get(field.name(), field.value());
+                        if !order.is_empty() {
+                            let o = index_arr.into_iter().collect::<BTreeSet<_>>();
+                            let sorder: Vec<u64> = order.intersection(&o).cloned().collect();
+                            order = sorder.into_iter().collect::<BTreeSet<_>>();
+                        } else {
+                            order = index_arr.into_iter().collect::<BTreeSet<_>>();
+                        }
+                        if order.is_empty() {
+                            return Some(order_arr);
+                        }
+                    }
+                }
+            }
+
+            if !order.is_empty() {
+                let mut dlimit: usize = 8;
+                if let Some(limit) = order_query.limit {
+                    dlimit = limit as usize;
+                }
+
+                let mut doffset: usize = 0;
+                if let Some(offset) = order_query.offset {
+                    doffset = offset as usize;
+                }
+
+                let resorder: Vec<u64> = order.into_iter().collect::<Vec<_>>();
+                if resorder.len() <= doffset {
+                    return Some(order_arr);
+                }
+                let end = if resorder.len() <= doffset + dlimit {
+                    resorder.len() - 1
+                } else {
+                    doffset + dlimit
+                };
+
+                for i in doffset..end {
+                    let index = i as usize;
+                    if <Orders<T>>::contains_key(resorder[index]) {
+                        let o = <Orders<T>>::get(resorder[index]);
+                        if let Some(o) = o {
+                            order_arr.push(o);
+                        }
+                    }
+                }
+            }
+        }
+
+        Some(order_arr)
+    }
 }
+
+// fn accounts() -> BTreeSet<T::AccountId> {
+// 		Self::members().into_iter().collect::<BTreeSet<_>>()
+// 	}
 
 #[derive(Default)]
 pub struct OrderBuilder<AccountId, Moment>
