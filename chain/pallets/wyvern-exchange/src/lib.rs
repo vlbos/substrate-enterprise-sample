@@ -12,6 +12,10 @@ use frame_support::{
 use frame_system::{self as system, ensure_signed};
 	use pallet_balances::Call as BalancesCall;
 
+use sp_core::H256;
+use sp_runtime::traits::{IdentifyAccount, Member, Verify};
+
+
 #[cfg(test)]
 mod mock;
 
@@ -30,13 +34,17 @@ pub const ORDER_MAX_FIELDS: usize = 3;
     // /* Inverse basis point. */
      pub const INVERSE_BASIS_POINT:usize = 10000;
 
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+
 // Custom types
+
 pub type OrderId = Vec<u8>;
 pub type FieldName = Vec<u8>;
 pub type FieldValue = Vec<u8>;
 
 pub type Address = Vec<u8>;
 pub type Bytes = Vec<u8>;
+
 
 ///sale kind interface
 #[derive(Encode, Decode, Debug, Clone, PartialEq)]
@@ -114,7 +122,7 @@ pub struct OrderType<AccountId, Moment> {
         saleKind:SaleKind;
         /* Target. */
         target:Address,
-        /* HowToCall. */
+        /* Vec<u8>. */
         howToCall:Vec<u8>;
         /* Calldata. */
         calldata:Bytes,
@@ -141,14 +149,25 @@ pub struct OrderType<AccountId, Moment> {
 
 //exchange core
 
+// Add new types to the trait:
+
+// pub trait Trait: system::Trait {
+//     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+//     type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
+//     type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
+// }
+
 pub trait Trait: system::Trait + timestamp::Trait {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+    type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
+    type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
     // type CreateRoleOrigin: EnsureOrigin<Self::Origin>;
 }
 
 decl_storage! {
     trait Store for Module<T: Trait> as OrderRegistry {
         NextOrderIndex: u64;
+pub contract_self:AccountId;
  // /* The token used to pay exchange fees. */
     // ERC20 public exchangeToken;
 pub exchangeToken:AccountId;
@@ -159,19 +178,19 @@ pub registry:AccountId;
     // TokenTransferProxy public tokenTransferProxy;
 pub tokenTransferProxy:AccountId;
     // /* Cancelled / finalized orders, by hash. */
-    // mapping(bytes32 => bool) public cancelledOrFinalized;
+    // mapping(Vec<u8> => bool) public cancelledOrFinalized;
   pub cancelledOrFinalized get(fn cancelled_or_finalized): map hasher(blake2_128_concat) Vec<u8> => bool;
     // /* Orders verified by on-chain approval (alternative to ECDSA signatures so that smart contracts can place orders directly). */
-    // mapping(bytes32 => bool) public approvedOrders;
+    // mapping(Vec<u8> => bool) public approvedOrders;
   pub approvedOrders get(fn approved_orders): map hasher(blake2_128_concat) Vec<u8> => bool;
     // /* For split fee orders, minimum required protocol maker fee, in basis points. Paid to owner (who can change it). */
-    // uint public minimumMakerProtocolFee = 0;
+    // u64 public minimumMakerProtocolFee = 0;
 pub minimumMakerProtocolFee:u64;
     // /* For split fee orders, minimum required protocol taker fee, in basis points. Paid to owner (who can change it). */
-    // uint public minimumTakerProtocolFee = 0;
+    // u64 public minimumTakerProtocolFee = 0;
 pub minimumTakerProtocolFee:u64;
     // /* Recipient of protocol fees. */
-    // address public protocolFeeRecipient;
+    // Address public protocolFeeRecipient;
 pub protocolFeeRecipient:Address;
 
 
@@ -183,14 +202,14 @@ decl_event!(
     where
         AccountId = <T as system::Trait>::AccountId,
     {
-    // event OrderApprovedPartOne    (bytes32 indexed hash, address exchange, address indexed maker, address taker, 
-// uint makerRelayerFee, uint takerRelayerFee, uint makerProtocolFee, uint takerProtocolFee, 
-// address indexed feeRecipient, FeeMethod feeMethod, SaleKindInterface.Side side, SaleKindInterface.SaleKind saleKind, address target);
-    // event OrderApprovedPartTwo    (bytes32 indexed hash, AuthenticatedProxy.HowToCall howToCall, bytes calldata, bytes replacementPattern, 
-// address staticTarget, bytes staticExtradata, address paymentToken, uint basePrice, 
-// uint extra, uint listingTime, uint expirationTime, uint salt, bool orderbookInclusionDesired);
-    // event OrderCancelled          (bytes32 indexed hash);
-    // event OrdersMatched           (bytes32 buyHash, bytes32 sellHash, address indexed maker, address indexed taker, uint price, bytes32 indexed metadata);
+    // event OrderApprovedPartOne    (Vec<u8> indexed hash, Address exchange, Address indexed maker, Address taker, 
+// u64 makerRelayerFee, u64 takerRelayerFee, u64 makerProtocolFee, u64 takerProtocolFee, 
+// Address indexed feeRecipient, FeeMethod feeMethod, SaleKindInterface.Side side, SaleKindInterface.SaleKind saleKind, Address target);
+    // event OrderApprovedPartTwo    (Vec<u8> indexed hash, AuthenticatedProxy.Vec<u8> howToCall, Vec<u8> calldata, Vec<u8> replacementPattern, 
+// Address staticTarget, Vec<u8> staticExtradata, Address paymentToken, u64 basePrice, 
+// u64 extra, u64 listingTime, u64 expirationTime, u64 salt, bool orderbookInclusionDesired);
+    // event OrderCancelled          (Vec<u8> indexed hash);
+    // event OrdersMatched           (Vec<u8> buyHash, Vec<u8> sellHash, Address indexed maker, Address indexed taker, u64 price, Vec<u8> indexed metadata);
 OrderApprovedPartOne(Vec<u8>, AccountId, AccountId,AccountId,
 u64,u64, u64,u64,
 AccountId,FeeMethod,Side,SaleKind, AccountId),
@@ -294,199 +313,179 @@ impl<T: Trait> Module<T> {
     /**
      * @dev Call calculateFinalPrice - library fn exposed for testing.
      */
-    fn calculateFinalPrice(side:Side, saleKind:SaleKind, basePrice:uint, extra:uint, listingTime:uint, expirationTime:uint)
-        
-        
-        -> uint
+    fn calculateFinalPrice_(side:Side, saleKind:SaleKind, basePrice:u64, extra:u64, listingTime:u64, expirationTime:u64)
+        -> u64
     {
-        return calculateFinalPrice(side, saleKind, basePrice, extra, listingTime, expirationTime);
+         calculateFinalPrice(side, saleKind, basePrice, extra, listingTime, expirationTime)
     }
 
     /**
      * @dev Call hashOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn hashOrder_(
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes)
-        
-        
-        -> bytes32
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>)
+        -> Vec<u8>
     {
-        return hashOrder(
-          Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8])
-        );
+         hashOrder(
+          Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, (addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8])
+        )
     }
 
     /**
      * @dev Call hashToSign - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn hashToSign_(
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes)
-        
-        
-        -> bytes32
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>)
+        -> Vec<u8>
     { 
-        return hashToSign(
+         hashToSign(
           Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8])
-        );
+        )
     }
 
     /**
      * @dev Call validateOrderParameters - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn validateOrderParameters_ (
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
         howToCall:Vec<u8>,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes)
-        
-        
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>)
         -> bool
     {
-        Order  order = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
-        return validateOrderParameters(
+        order:&OrderType = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
+         validateOrderParameters(
           order
-        );
+        )
     }
 
     /**
      * @dev Call validateOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn validateOrder_ (
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes,
-        v:uint8,
-        r:bytes32,
-        s:bytes32)
-        
-        
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>,
+        sig:Signature)
         -> bool
     {
-        Order  order = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
-        return validateOrder(
+        order:&OrderType = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
+         validateOrder(
           hashToSign(order),
           order,
-          Sig(v, r, s)
-        );
+          sig
+        )
     }
 
     /**
      * @dev Call approveOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn approveOrder_ (
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes,
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>,
         orderbookInclusionDesired:bool) 
         
     {
-        Order  order = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
-        return approveOrder(order, orderbookInclusionDesired);
+        order:&OrderType = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
+        approveOrder(order, orderbookInclusionDesired)
     }
 
     /**
      * @dev Call cancelOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn cancelOrder_(
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes,
-        v:uint8,
-        r:bytes32,
-        s:bytes32)
-        
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>,
+        sig:Signature)
     {
-
-        return cancelOrder(
+         cancelOrder(
           Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]),
-          Sig(v, r, s)
-        );
+          sig
+        )
     }
 
     /**
      * @dev Call calculateCurrentPrice - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn calculateCurrentPrice_(
-        addrs:address[7],
-        uints:uint[9],
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
         feeMethod:FeeMethod,
         side:Side,
         saleKind:SaleKind,
-        howToCall:HowToCall,
-        calldata:bytes,
-        replacementPattern:bytes,
-        staticExtradata:bytes)
-        
-        
-        -> uint
+        howToCall:Vec<u8>,
+        calldata:Vec<u8>,
+        replacementPattern:Vec<u8>,
+        staticExtradata:Vec<u8>)
+        -> u64
     {
-        return calculateCurrentPrice(
+         calculateCurrentPrice(
           Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], feeMethod, side, saleKind, addrs[4], howToCall, calldata, replacementPattern, addrs[5], staticExtradata, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8])
-        );
+        )
     }
 
     /**
      * @dev Call ordersCanMatch - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn ordersCanMatch_(
-        addrs:address[14],
-        uints:uint[18],
-        feeMethodsSidesKindsHowToCalls:uint8[8],
-        calldataBuy:bytes,
-        calldataSell:bytes,
-        replacementPatternBuy:bytes,
-        replacementPatternSell:bytes,
-        staticExtradataBuy:bytes,
-        staticExtradataSell:bytes)
-        
-        
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
+        feeMethodsSidesKindsHowToCalls:Vec<u8>,
+        calldataBuy:Vec<u8>,
+        calldataSell:Vec<u8>,
+        replacementPatternBuy:Vec<u8>,
+        replacementPatternSell:Vec<u8>,
+        staticExtradataBuy:Vec<u8>,
+        staticExtradataSell:Vec<u8>)
         -> bool
     {
-        Order  buy = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], HowToCall(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
-        Order  sell = Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], HowToCall(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]);
-        return ordersCanMatch(
+        Order  buy = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], Vec<u8>(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
+        Order  sell = Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], Vec<u8>(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]);
+         ordersCanMatch(
           buy,
           sell
-        );
+        )
     }
 
     /**
@@ -497,9 +496,7 @@ impl<T: Trait> Module<T> {
      * @param sellReplacementPattern Sell-side order calldata replacement mask
      * @return Whether the orders' calldata can be matched
      */
-    fn orderCalldataCanMatch(buyCalldata:bytes, buyReplacementPattern:bytes, sellCalldata:bytes, sellReplacementPattern:bytes)
-        
-        
+    fn orderCalldataCanMatch(buyCalldata:Vec<u8>, buyReplacementPattern:Vec<u8>, sellCalldata:Vec<u8>, sellReplacementPattern:Vec<u8>)
         -> bool
     {
         if (buyReplacementPattern.length > 0) {
@@ -508,60 +505,58 @@ impl<T: Trait> Module<T> {
         if (sellReplacementPattern.length > 0) {
           ArrayUtils.guardedArrayReplace(sellCalldata, buyCalldata, sellReplacementPattern);
         }
-        return ArrayUtils.arrayEq(buyCalldata, sellCalldata);
+
+        ArrayUtils.arrayEq(buyCalldata, sellCalldata)
     }
 
     /**
      * @dev Call calculateMatchPrice - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn calculateMatchPrice_(
-        addrs:address[14],
-        uints:uint[18],
-        feeMethodsSidesKindsHowToCalls:uint8[8],
-        calldataBuy:bytes,
-        calldataSell:bytes,
-        replacementPatternBuy:bytes,
-        replacementPatternSell:bytes,
-        staticExtradataBuy:bytes,
-        staticExtradataSell:bytes)
-        
-        
-        -> uint
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
+        feeMethodsSidesKindsHowToCalls:Vec<u8>,
+        calldataBuy:Vec<u8>,
+        calldataSell:Vec<u8>,
+        replacementPatternBuy:Vec<u8>,
+        replacementPatternSell:Vec<u8>,
+        staticExtradataBuy:Vec<u8>,
+        staticExtradataSell:Vec<u8>)
+        -> u64
     {
-        Order  buy = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], HowToCall(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
-        Order  sell = Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], HowToCall(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]);
-        return calculateMatchPrice(
+        Order  buy = Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], Vec<u8>(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]);
+        Order  sell = Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], Vec<u8>(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]);
+        calculateMatchPrice(
           buy,
           sell
-        );
+        )
     }
 
     /**
      * @dev Call atomicMatch - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn atomicMatch_(
-        addrs:address[14],
-        uints:uint[18],
-        feeMethodsSidesKindsHowToCalls:uint8[8],
-        calldataBuy:bytes,
-        calldataSell:bytes,
-        replacementPatternBuy:bytes,
-        replacementPatternSell:bytes,
-        staticExtradataBuy:bytes,
-        staticExtradataSell:bytes,
-        vs:uint8[2],
-        rssMetadata:bytes32[5])
+        addrs:Vec<Address>,
+        uints:Vec<u64>,
+        feeMethodsSidesKindsHowToCalls:Vec<u8>,
+        calldataBuy:Vec<u8>,
+        calldataSell:Vec<u8>,
+        replacementPatternBuy:Vec<u8>,
+        replacementPatternSell:Vec<u8>,
+        staticExtradataBuy:Vec<u8>,
+        staticExtradataSell:Vec<u8>,
+        sig:Vec<Signature>,
+        rssMetadata:Vec<u8>)
         
         
     {
-
-        return atomicMatch(
-          Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], HowToCall(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]),
-          Sig(vs[0], rssMetadata[0], rssMetadata[1]),
-          Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], HowToCall(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]),
-          Sig(vs[1], rssMetadata[2], rssMetadata[3]),
-          rssMetadata[4]
-        );
+         atomicMatch(
+          Order(addrs[0], addrs[1], addrs[2], uints[0], uints[1], uints[2], uints[3], addrs[3], FeeMethod(feeMethodsSidesKindsHowToCalls[0]), Side(feeMethodsSidesKindsHowToCalls[1]), SaleKind(feeMethodsSidesKindsHowToCalls[2]), addrs[4], Vec<u8>(feeMethodsSidesKindsHowToCalls[3]), calldataBuy, replacementPatternBuy, addrs[5], staticExtradataBuy, ERC20(addrs[6]), uints[4], uints[5], uints[6], uints[7], uints[8]),
+          sig[0],
+          Order(addrs[7], addrs[8], addrs[9], uints[9], uints[10], uints[11], uints[12], addrs[10], FeeMethod(feeMethodsSidesKindsHowToCalls[4]), Side(feeMethodsSidesKindsHowToCalls[5]), SaleKind(feeMethodsSidesKindsHowToCalls[6]), addrs[11], Vec<u8>(feeMethodsSidesKindsHowToCalls[7]), calldataSell, replacementPatternSell, addrs[12], staticExtradataSell, ERC20(addrs[13]), uints[13], uints[14], uints[15], uints[16], uints[17]),
+          sig[1],
+          rssMetadata
+        )
     }
 
 ///exchange core
@@ -573,7 +568,7 @@ impl<T: Trait> Module<T> {
         
         // onlyOwner
     {
-        minimumMakerProtocolFee = newMinimumMakerProtocolFee;
+        minimumMakerProtocolFee.put(newMinimumMakerProtocolFee);
     }
 
     /**
@@ -585,7 +580,7 @@ impl<T: Trait> Module<T> {
         
     {
 // onlyOwner
-        minimumTakerProtocolFee = newMinimumTakerProtocolFee;
+        minimumTakerProtocolFee.put(newMinimumTakerProtocolFee);
     }
 
     /**
@@ -596,7 +591,7 @@ impl<T: Trait> Module<T> {
       
     {
 // onlyOwner
-        protocolFeeRecipient = newProtocolFeeRecipient;
+        protocolFeeRecipient.put(newProtocolFeeRecipient);
     }
 
     /**
@@ -610,8 +605,8 @@ impl<T: Trait> Module<T> {
     {
         if amount > 0 {
             // ensure!(tokenTransferProxy.transferFrom(token, from, to, amount), Error::<T>::OrderIdMissing);
-		let call = Box::new(Call::Balances(BalancesCall::transfer(6, 1)));
-		ensure!(Proxy::proxy(Origin::signed(2), 1, None, call.clone()), Error::<T>::OrderIdMissing);
+		// let call = Box::new(Call::Balances(BalancesCall::transfer(6, 1)));
+		// ensure!(Proxy::proxy(Origin::signed(2), 1, None, call.clone()), Error::<T>::OrderIdMissing);
         }
     }
 
@@ -624,7 +619,7 @@ impl<T: Trait> Module<T> {
     fn chargeProtocolFee(from:Address, to:Address, amount:u64)
         
     {
-        transferTokens(exchangeToken, from, to, amount);
+        transferTokens(exchangeToken::get(), from, to, amount);
     }
 
      /**
@@ -632,7 +627,7 @@ impl<T: Trait> Module<T> {
      * @param order Order to hash
      * @return Hash of order
      */
-    fn hashOrder(  order:OrderType)
+    fn hashOrder(  order:&OrderType)
         -> Vec<u8>
     {
                    // hash := keccak256(add(array, 0x20), size)
@@ -648,10 +643,10 @@ sp_io::hashing::keccak_256(&order.encode()).into()
      * @param order Order to hash
      * @return Hash of message prefix and order hash per Ethereum format
      */
-    fn hashToSign(order:Order)
+    fn hashToSign(order:&Order)
         -> Vec<u8>
     {
-        return sp_io::hashing::keccak256("\x19Ethereum Signed Message:\n32", hashOrder(order));
+         sp_io::hashing::keccak256("\x19Ethereum Signed Message:\n32", hashOrder(order))
     }
 
     /**
@@ -659,7 +654,7 @@ sp_io::hashing::keccak_256(&order.encode()).into()
      * @param order Order to validate
      * @param sig ECDSA signature
      */
-    fn requireValidOrder(order:Order, sig:Sig)
+    fn requireValidOrder(order:&Order, sig:&Signature)
         -> Vec<u8>
     {
         Vec<u8> hash = hashToSign(order);
@@ -671,11 +666,11 @@ sp_io::hashing::keccak_256(&order.encode()).into()
      * @dev Validate order parameters (does *not* check validity:signature)
      * @param order Order to validate
      */
-    fn validateOrderParameters(order:Order)
+    fn validateOrderParameters(order:&Order)
         -> bool
     {
         /* Order must be targeted at this protocol version (this contract:Exchange). */
-        if order.exchange != Address(this) {
+        if order.exchange != self {
             return false;
         }
 
@@ -685,7 +680,7 @@ sp_io::hashing::keccak_256(&order.encode()).into()
         }
 
         /* If using the split fee method, order must have sufficient protocol fees. */
-        if order.feeMethod == FeeMethod.SplitFee && (order.makerProtocolFee < minimumMakerProtocolFee || order.takerProtocolFee < minimumTakerProtocolFee) {
+        if order.feeMethod == FeeMethod.SplitFee && (order.makerProtocolFee < minimumMakerProtocolFee::get() || order.takerProtocolFee < minimumTakerProtocolFee::get()) {
             return false;
         }
 
@@ -698,9 +693,7 @@ sp_io::hashing::keccak_256(&order.encode()).into()
      * @param order Order to validate
      * @param sig ECDSA signature
      */
-    fn validateOrder(hash:Vec<u8>, Order  order, sig:Sig) 
-        
-        
+    fn validateOrder(hash:Vec<u8>, order:&OrderType, sig:&Signature) 
         -> bool
     {
         /* Not done in an if-conditional to prevent unnecessary ecrecover evaluation, which seems to happen even though it should short-circuit. */
@@ -711,21 +704,25 @@ sp_io::hashing::keccak_256(&order.encode()).into()
         }
 
         /* Order must have not been canceled or already filled. */
-        if cancelledOrFinalized[hash] {
+        if cancelledOrFinalized.get(hash) {
             return false;
         }
         
         /* Order authentication. Order must be either:
          (a) previously approved */
-        if approvedOrders[hash] {
+        if approvedOrders.get(hash) {
             return true;
         }
 
 
         /* or (b) ECDSA-signed by maker. */
-        if ecrecover(hash, sig.v, sig.r, sig.s) == order.maker {
-            return true;
-        }
+        // if ecrecover(hash, sig.v, sig.r, sig.s) == order.maker {
+        //     return true;
+        // }
+ if check_signature(sig,hash,order.maker)== OK(())
+{
+return true;
+}
 
         false
     }
@@ -736,15 +733,7 @@ sp_io::hashing::keccak_256(&order.encode()).into()
 
 // Import the codec and traits:
 
-use codec::{Decode, Encode};
-use sp_runtime::traits::{IdentifyAccount, Member, Verify};
-// Add new types to the trait:
 
-pub trait Trait: system::Trait {
-    type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-    type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
-    type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
-}
 // Example function to verify the signature.
 
 pub fn check_signature(
@@ -766,24 +755,24 @@ pub fn check_signature(
      * @param order Order to approve
      * @param orderbookInclusionDesired Whether orderbook providers should include the order in their orderbooks
      */
-    fn approveOrder(order:Order, orderbookInclusionDesired:bool)
+    fn approveOrder(order:&Order, orderbookInclusionDesired:bool)
         
     {
         /* CHECKS */
 
         /* Assert sender is authorized to approve order. */
-        ensure!(msg.sender == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(msg_sender == order.maker, Error::<T>::OrderIdMissing);
 
         /* Calculate order hash. */
         Vec<u8> hash = hashToSign(order);
 
         /* Assert order has not already been approved. */
-        ensure!(!approvedOrders[hash], Error::<T>::OrderIdMissing);
+        ensure!(!approvedOrders.get(hash), Error::<T>::OrderIdMissing);
 
         /* EFFECTS */
     
         /* Mark order as approved. */
-        approvedOrders[hash] = true;
+        approvedOrders.insert(hash,true);
   
         /* Log approval event. Must be split in two due to Solidity stack size limitations. */
         {
@@ -799,7 +788,7 @@ pub fn check_signature(
      * @param order Order to cancel
      * @param sig ECDSA signature
      */
-    fn cancelOrder(order:Order, sig:Sig) 
+    fn cancelOrder(order:&Order, sig:&Signature) 
     {
         /* CHECKS */
 
@@ -807,12 +796,12 @@ pub fn check_signature(
         Vec<u8> hash = requireValidOrder(order, sig);
 
         /* Assert sender is authorized to cancel order. */
-        ensure!(msg.sender == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(msg_sender == order.maker, Error::<T>::OrderIdMissing);
   
         /* EFFECTS */
       
         /* Mark order as cancelled, preventing it from being matched. */
-        cancelledOrFinalized[hash] = true;
+        cancelledOrFinalized.insert(hash,true);
 
         /* Log cancel event. */
         Self::deposit_event(RawEvent::OrderCancelled(hash));
@@ -824,12 +813,12 @@ pub fn check_signature(
      * @param order Order to calculate the price of
      * @return The current price of the order
      */
-    fn calculateCurrentPrice (order:Order)
+    fn calculateCurrentPrice (order:&Order)
           
         
         -> u64
     {
-        return SaleKindInterface.calculateFinalPrice(order.side, order.saleKind, order.basePrice, order.extra, order.listingTime, order.expirationTime);
+        SaleKindInterface.calculateFinalPrice(order.side, order.saleKind, order.basePrice, order.extra, order.listingTime, order.expirationTime)
     }
 
     /**
@@ -853,7 +842,7 @@ pub fn check_signature(
         ensure!(buyPrice >= sellPrice, Error::<T>::OrderIdMissing);
         
         /* Maker/taker priority. */
-        return sell.feeRecipient != Address(0) ? sellPrice : buyPrice;
+        if sell.feeRecipient != Address(0) { sellPrice} else { buyPrice}
     }
 
     /**
@@ -861,13 +850,13 @@ pub fn check_signature(
      * @param buy Buy-side order
      * @param sell Sell-side order
      */
-    fn executeFundsTransfer(buy:Order, sell:Order)
-        
+    fn executeFundsTransfer(msg_value:u64,buy:Order, sell:Order)
         -> u64
     {
+   let originprotocolFeeRecipient= protocolFeeRecipient::get();
         /* Only payable in the special case of unwrapped Ether. */
         if sell.paymentToken != Address(0) {
-            ensure!(msg.value == 0, Error::<T>::OrderIdMissing);
+            ensure!(msg_value == 0, Error::<T>::OrderIdMissing);
         }
 
         /* Calculate match price. */
@@ -898,42 +887,46 @@ pub fn check_signature(
                 /* Maker fees are deducted from the token amount that the maker receives. Taker fees are extra tokens that must be paid by the taker. */
 
                 if sell.makerRelayerFee > 0 {
-                    u64 makerRelayerFee = SafeMath.div(SafeMath.mul(sell.makerRelayerFee, price), INVERSE_BASIS_POINT);
+                    u64 makerRelayerFee = ((sell.makerRelayerFee* price)/INVERSE_BASIS_POINT);
                     if sell.paymentToken == Address(0) {
-                        receiveAmount = SafeMath.sub(receiveAmount, makerRelayerFee);
-                        sell.feeRecipient.transfer(makerRelayerFee);
+                        receiveAmount = (receiveAmount- makerRelayerFee);
+                        // sell.feeRecipient.transfer(makerRelayerFee);
+                        transferTokens(Self::AccountId,Self::AccountId,sell.feeRecipient, makerRelayerFee);
                     } else {
                         transferTokens(sell.paymentToken, sell.maker, sell.feeRecipient, makerRelayerFee);
                     }
                 }
 
                 if sell.takerRelayerFee > 0 {
-                    u64 takerRelayerFee = SafeMath.div(SafeMath.mul(sell.takerRelayerFee, price), INVERSE_BASIS_POINT);
+                    u64 takerRelayerFee =((sell.takerRelayerFee* price)/INVERSE_BASIS_POINT);
                     if sell.paymentToken == Address(0) {
-                        requiredAmount = SafeMath.add(requiredAmount, takerRelayerFee);
-                        sell.feeRecipient.transfer(takerRelayerFee);
+                        requiredAmount = (requiredAmount+takerRelayerFee);
+                        // sell.feeRecipient.transfer(takerRelayerFee);
+transferTokens(Self::AccountId,Self::AccountId,sell.feeRecipient, takerRelayerFee);
                     } else {
                         transferTokens(sell.paymentToken, buy.maker, sell.feeRecipient, takerRelayerFee);
                     }
                 }
 
                 if sell.makerProtocolFee > 0 {
-                    u64 makerProtocolFee = SafeMath.div(SafeMath.mul(sell.makerProtocolFee, price), INVERSE_BASIS_POINT);
+                    u64 makerProtocolFee = ((sell.makerProtocolFee*price)/ INVERSE_BASIS_POINT);
                     if sell.paymentToken == Address(0) {
-                        receiveAmount = SafeMath.sub(receiveAmount, makerProtocolFee);
-                        protocolFeeRecipient.transfer(makerProtocolFee);
+                        receiveAmount = (receiveAmount- makerProtocolFee);
+                        // protocolFeeRecipient.transfer(makerProtocolFee);
+transferTokens(Self::AccountId,Self::AccountId,originprotocolFeeRecipient, makerProtocolFee);
                     } else {
-                        transferTokens(sell.paymentToken, sell.maker, protocolFeeRecipient, makerProtocolFee);
+                        transferTokens(sell.paymentToken, sell.maker, originprotocolFeeRecipient, makerProtocolFee);
                     }
                 }
 
                 if sell.takerProtocolFee > 0 {
-                    u64 takerProtocolFee = SafeMath.div(SafeMath.mul(sell.takerProtocolFee, price), INVERSE_BASIS_POINT);
+                    u64 takerProtocolFee = ((sell.takerProtocolFee*price)/INVERSE_BASIS_POINT);
                     if sell.paymentToken == Address(0) {
-                        requiredAmount = SafeMath.add(requiredAmount, takerProtocolFee);
-                        protocolFeeRecipient.transfer(takerProtocolFee);
+                        requiredAmount = (requiredAmount+takerProtocolFee);
+                        // protocolFeeRecipient.transfer(takerProtocolFee);
+transferTokens(Self::AccountId,Self::AccountId,originprotocolFeeRecipient, takerProtocolFee);
                     } else {
-                        transferTokens(sell.paymentToken, buy.maker, protocolFeeRecipient, takerProtocolFee);
+                        transferTokens(sell.paymentToken, buy.maker, originprotocolFeeRecipient, takerProtocolFee);
                     }
                 }
 
@@ -958,23 +951,23 @@ pub fn check_signature(
                 ensure!(buy.takerProtocolFee <= sell.takerProtocolFee, Error::<T>::OrderIdMissing);
 
                 if buy.makerRelayerFee > 0 {
-                    makerRelayerFee = SafeMath.div(SafeMath.mul(buy.makerRelayerFee, price), INVERSE_BASIS_POINT);
+                    makerRelayerFee = ((buy.makerRelayerFee*price)/ INVERSE_BASIS_POINT);
                     transferTokens(sell.paymentToken, buy.maker, buy.feeRecipient, makerRelayerFee);
                 }
 
                 if buy.takerRelayerFee > 0 {
-                    takerRelayerFee = SafeMath.div(SafeMath.mul(buy.takerRelayerFee, price), INVERSE_BASIS_POINT);
+                    takerRelayerFee = ((buy.takerRelayerFee* price)/ INVERSE_BASIS_POINT);
                     transferTokens(sell.paymentToken, sell.maker, buy.feeRecipient, takerRelayerFee);
                 }
 
                 if buy.makerProtocolFee > 0 {
-                    makerProtocolFee = SafeMath.div(SafeMath.mul(buy.makerProtocolFee, price), INVERSE_BASIS_POINT);
-                    transferTokens(sell.paymentToken, buy.maker, protocolFeeRecipient, makerProtocolFee);
+                    makerProtocolFee = ((buy.makerProtocolFee* price)/ INVERSE_BASIS_POINT);
+                    transferTokens(sell.paymentToken, buy.maker, originprotocolFeeRecipient, makerProtocolFee);
                 }
 
                 if buy.takerProtocolFee > 0 {
-                    takerProtocolFee = SafeMath.div(SafeMath.mul(buy.takerProtocolFee, price), INVERSE_BASIS_POINT);
-                    transferTokens(sell.paymentToken, sell.maker, protocolFeeRecipient, takerProtocolFee);
+                    takerProtocolFee = ((buy.takerProtocolFee* price)/INVERSE_BASIS_POINT);
+                    transferTokens(sell.paymentToken, sell.maker, originprotocolFeeRecipient, takerProtocolFee);
                 }
 
             } else {
@@ -988,12 +981,14 @@ pub fn check_signature(
 
         if sell.paymentToken == Address(0) {
             /* Special-case Ether, order must be matched by buyer. */
-            ensure!(msg.value >= requiredAmount, Error::<T>::OrderIdMissing);
-            sell.maker.transfer(receiveAmount);
+            ensure!(msg_value >= requiredAmount, Error::<T>::OrderIdMissing);
+            // sell.maker.transfer(receiveAmount);
+transferTokens(Self::AccountId,Self::AccountId,sell.maker, receiveAmount);
             /* Allow overshoot for variable-price auctions, refund difference. */
-            u64 diff = SafeMath.sub(msg.value, requiredAmount);
+            u64 diff = (msg_value- requiredAmount);
             if diff > 0 {
-                buy.maker.transfer(diff);
+                // buy.maker.transfer(diff);
+transferTokens(Self::AccountId,Self::AccountId,buy.maker, diff);
             }
         }
 
@@ -1009,11 +1004,9 @@ pub fn check_signature(
      * @return Whether or not the two orders can be matched
      */
     fn ordersCanMatch(buy:Order, sell:Order)
-        
-        
         -> bool
     {
-        return (
+         (
             /* Must be opposite-side. */
             (buy.side == SaleKindInterface.Side.Buy && sell.side == SaleKindInterface.Side.Sell) &&     
             /* Must use same fee method. */
@@ -1033,7 +1026,7 @@ pub fn check_signature(
             SaleKindInterface.canSettleOrder(buy.listingTime, buy.expirationTime) &&
             /* Sell-side order must be settleable. */
             SaleKindInterface.canSettleOrder(sell.listingTime, sell.expirationTime)
-        );
+        )
     }
 
     /**
@@ -1043,16 +1036,14 @@ pub fn check_signature(
      * @param sell Sell-side order
      * @param sellSig Sell-side order signature
      */
-    fn atomicMatch(buy:Order, Sig  buySig, Order  sell, Sig  sellSig, metadata:Vec<u8>)
-        
-        
+    fn atomicMatch(msg_sender:AccountId,msg_value:u64,buy:Order, Sig  buySig, Order  sell, Signature  sellSig, metadata:Vec<u8>)
     {
 //reentrancyGuard
         /* CHECKS */
       
         /* Ensure buy order validity and calculate hash if necessary. */
         Vec<u8> buyHash;
-        if buy.maker == msg.sender {
+        if buy.maker == msg_sender {
             ensure!(validateOrderParameters(buy), Error::<T>::OrderIdMissing);
         } else {
             buyHash = requireValidOrder(buy, buySig);
@@ -1060,7 +1051,7 @@ pub fn check_signature(
 
         /* Ensure sell order validity and calculate hash if necessary. */
         Vec<u8> sellHash;
-        if sell.maker == msg.sender {
+        if sell.maker == msg_sender {
             ensure!(validateOrderParameters(sell), Error::<T>::OrderIdMissing);
         } else {
             sellHash = requireValidOrder(sell, sellSig);
@@ -1070,12 +1061,12 @@ pub fn check_signature(
         ensure!(ordersCanMatch(buy, sell), Error::<T>::OrderIdMissing);
 
         /* Target must exist (prevent malicious selfdestructs just prior to settlement:order). */
-        u64 size;
-        Address target = sell.target;
-        assembly {
-            size := extcodesize(target)
-        }
-        ensure!(size > 0, Error::<T>::OrderIdMissing);
+        // u64 size;
+        // Address target = sell.target;
+        // assembly {
+        //     size := extcodesize(target)
+        // }
+        // ensure!(size > 0, Error::<T>::OrderIdMissing);
       
         /* Must match calldata after replacement, if specified. */ 
         if buy.replacementPattern.length > 0 {
@@ -1086,32 +1077,32 @@ pub fn check_signature(
         }
         ensure!(ArrayUtils.arrayEq(buy.calldata, sell.calldata), Error::<T>::OrderIdMissing);
 
-        /* Retrieve delegateProxy contract. */
-        OwnableDelegateProxy delegateProxy = registry.proxies(sell.maker);
+        // /* Retrieve delegateProxy contract. */
+        // OwnableDelegateProxy delegateProxy = registry.proxies(sell.maker);
 
-        /* Proxy must exist. */
-        ensure!(delegateProxy != Address(0), Error::<T>::OrderIdMissing);
+        // /* Proxy must exist. */
+        // ensure!(delegateProxy != Address(0), Error::<T>::OrderIdMissing);
 
-        /* Assert implementation. */
-        ensure!(delegateProxy.implementation() == registry.delegateProxyImplementation(), Error::<T>::OrderIdMissing);
+        // /* Assert implementation. */
+        // ensure!(delegateProxy.implementation() == registry.delegateProxyImplementation(), Error::<T>::OrderIdMissing);
 
-        /* Access the passthrough AuthenticatedProxy. */
-        AuthenticatedProxy proxy = AuthenticatedProxy(delegateProxy);
+        // /* Access the passthrough AuthenticatedProxy. */
+        // AuthenticatedProxy proxy = AuthenticatedProxy(delegateProxy);
 
         /* EFFECTS */
 
         /* Mark previously signed or approved orders as finalized. */
-        if msg.sender != buy.maker {
-            cancelledOrFinalized[buyHash] = true;
+        if msg_sender != buy.maker {
+            cancelledOrFinalized.insert(buyHash,true);
         }
-        if msg.sender != sell.maker {
-            cancelledOrFinalized[sellHash] = true;
+        if msg_sender != sell.maker {
+            cancelledOrFinalized.insert(sellHash,true);
         }
 
         /* INTERACTIONS */
 
         /* Execute funds transfer and pay fees. */
-        u64 price = executeFundsTransfer(buy, sell);
+        u64 price = executeFundsTransfer(msg_value,buy, sell);
 
         /* Execute specified call through proxy. */
         ensure!(proxy.proxy(sell.target, sell.howToCall, sell.calldata), Error::<T>::OrderIdMissing);
@@ -1119,14 +1110,14 @@ pub fn check_signature(
         /* Static calls are intentionally done after the effectful call so they can check resulting state. */
 
         /* Handle buy-side static call if specified. */
-        if buy.staticTarget != Address(0) {
-            ensure!(staticCall(buy.staticTarget, sell.calldata, buy.staticExtradata), Error::<T>::OrderIdMissing);
-        }
+        // if buy.staticTarget != Address(0) {
+        //     ensure!(staticCall(buy.staticTarget, sell.calldata, buy.staticExtradata), Error::<T>::OrderIdMissing);
+        // }
 
-        /* Handle sell-side static call if specified. */
-        if sell.staticTarget != Address(0) {
-            ensure!(staticCall(sell.staticTarget, sell.calldata, sell.staticExtradata), Error::<T>::OrderIdMissing);
-        }
+        // /* Handle sell-side static call if specified. */
+        // if sell.staticTarget != Address(0) {
+        //     ensure!(staticCall(sell.staticTarget, sell.calldata, sell.staticExtradata), Error::<T>::OrderIdMissing);
+        // }
 
         /* Log match event. */
         Self::deposit_event(RawEvent::OrdersMatched(buyHash, sellHash, sell.feeRecipient != Address(0) ? sell.maker : buy.maker, sell.feeRecipient != Address(0) ? buy.maker : sell.maker, price, metadata));
@@ -1187,8 +1178,8 @@ pub fn check_signature(
     }
 
  /**
-     * Replace bytes in an array with bytes in another array, guarded by a bitmask
-     * Efficiency of this fn is a bit unpredictable because of the EVM's word-specific model (arrays under 32 bytes will be slower)
+     * Replace Vec<u8> in an array with Vec<u8> in another array, guarded by a bitmask
+     * Efficiency of this fn is a bit unpredictable because of the EVM's word-specific model (arrays under 32 Vec<u8> will be slower)
      * 
      * @dev Mask must be the size of the byte array. A nonzero byte means the byte array can be changed.
      * @param array The original array
@@ -1196,12 +1187,10 @@ pub fn check_signature(
      * @param mask The mask specifying which bits can be changed
      * @return The updated byte array (the parameter will be modified inplace)
      */
-    fn guardedArrayReplace(array:&mut bytes, desired:bytes, mask:bytes)
-        
-        
+    fn guardedArrayReplace(array:&mut Vec<u8>, desired:Vec<u8>, mask:Vec<u8>)
     {
-        require(array.length == desired.length);
-        require(array.length == mask.length);
+        ensure!(array.length == desired.length, Error::<T>::OrderIdMissing);
+        ensure!(array.length == mask.length, Error::<T>::OrderIdMissing);
  
 for (i, &item) in array.iter().enumerate() {
             /* Conceptually: array[i] = (!mask[i] && array[i]) || (mask[i] && desired[i]), bitwise in word chunks. */
@@ -1211,14 +1200,14 @@ for (i, &item) in array.iter().enumerate() {
 
     /**
      * Test if two arrays are equal
-     * Source: https://github.com/GNSPS/solidity-bytes-utils/blob/master/contracts/BytesLib.sol
+     * Source: https://github.com/GNSPS/solidity-Vec<u8>-utils/blob/master/contracts/BytesLib.sol
      * 
      * @dev Arrays must be of equal length, otherwise will return false
      * @param a First array
      * @param b Second array
-     * @return Whether or not all bytes in the arrays are equal
+     * @return Whether or not all Vec<u8> in the arrays are equal
      */
-    fn arrayEq(a:bytes, b:bytes)
+    fn arrayEq(a:Vec<u8>, b:Vec<u8>)
         -> bool
     {
         if a.len() != b.len(){
