@@ -215,8 +215,8 @@ OrderField::new(b"prefixed_hash", b"0x98a07dfb9e4da7ffc0ad0fb230afc8684dc4a0ac44
             })
         );
 
-        assert_eq!(
-            Orderbook::get_orders( Some(OrderQuery {
+        assert_eq!(Orderbook::get_orders(
+            Some(OrderQuery {
                 fields: Some(fields),
             }),
             Some(OrderJSONType {
@@ -226,7 +226,7 @@ OrderField::new(b"prefixed_hash", b"0x98a07dfb9e4da7ffc0ad0fb230afc8684dc4a0ac44
                 registered: now,
                 fields: Some(fields),
             })
-        );
+        ));
 
         // assert_eq!(<OrdersOfOrganization<Test>>::get(owner), vec![id.clone()]);
 

@@ -12,6 +12,11 @@ SKIP_WASM_BUILD=1 cargo test
 rustfmt src/lib.rs 
 ```
 
+```
+catgo fmt
+
+cargo clippy
+```
 
 
 1. Install Rust:
