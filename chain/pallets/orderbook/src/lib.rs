@@ -47,7 +47,7 @@ pub struct OrderJSONType<AccountId, Moment> {
     // Typically, there would at least be a textual description, and SKU(Stock-keeping unit).
     // It could also contain instance / lot master data e.g. expiration, weight, harvest date.
     fields: Option<Vec<OrderField>>,
-    // Timestamp (approximate) at which the prodct was registered on-chain.
+    // Timestamp (approximate) at which the Order was registered on-chain.
     registered: Moment,
 }
 

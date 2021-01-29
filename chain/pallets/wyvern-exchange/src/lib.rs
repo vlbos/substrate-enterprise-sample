@@ -6,7 +6,7 @@ use codec::{Decode, Encode};
 use core::result::Result;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch, ensure, sp_runtime::RuntimeDebug,sp_runtime::traits::{IdentifyAccount, Member, Verify},
-    sp_std::collections::btree_set::BTreeSet, sp_io::*,sp_std::prelude::*
+    sp_std::collections::btree_set::BTreeSet, sp_std::prelude::*
 };
 // traits::EnsureOrigin,
 use frame_system::{self as system, ensure_signed};
@@ -30,7 +30,7 @@ pub const ORDER_FIELD_VALUE_MAX_LENGTH: usize = 20;
 pub const ORDER_MAX_FIELDS: usize = 3;
 
 // /* Inverse basis point. */
-pub const INVERSE_BASIS_POINT: usize = 10000;
+pub const INVERSE_BASIS_POINT: u64 = 10000;
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
@@ -47,7 +47,6 @@ pub type OrderId = Vec<u8>;
 pub type FieldName = Vec<u8>;
 pub type FieldValue = Vec<u8>;
 
-pub type Address = Vec<u8>;
 pub type Bytes = Vec<u8>;
 
 ///sale kind interface
@@ -162,8 +161,8 @@ impl From<u8> for SaleKind {
 impl Side {
     fn value(&self) -> u8 {
         match *self {
-            Side::Call => 0x0,
-            Side::DelegateCall => 0x1,
+            Side::Buy => 0x0,
+            Side::Sell => 0x1,
         }
     }
 }
@@ -171,8 +170,8 @@ impl Side {
 impl From<u8> for Side {
     fn from(orig: u8) -> Self {
         match orig {
-            0x0 => return Side::Call,
-            0x1 => return Side::DelegateCall,
+            0x0 => return Side::Buy,
+            0x1 => return Side::Sell,
         };
     }
 }
@@ -202,12 +201,12 @@ pub struct OrderType<AccountId, Moment> {
     // registered: Moment,
 
     // /* An order on the exchange. */
-    /* Exchange Address, intended as a versioning mechanism. */
-    exchange: Address,
-    /* OrderType maker Address. */
-    maker: Address,
-    /* OrderType taker Address, if specified. */
-    taker: Address,
+    /* Exchange AccountId, intended as a versioning mechanism. */
+    exchange: AccountId,
+    /* OrderType maker AccountId. */
+    maker: AccountId,
+    /* OrderType taker AccountId, if specified. */
+    taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
     makerRelayerFee: u64,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
@@ -216,8 +215,8 @@ pub struct OrderType<AccountId, Moment> {
     makerProtocolFee: u64,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
     takerProtocolFee: u64,
-    /* OrderType fee recipient or zero Address for taker order. */
-    feeRecipient: Address,
+    /* OrderType fee recipient or zero AccountId for taker order. */
+    feeRecipient: AccountId,
     /* Fee method (protocol token or split fee). */
     feeMethod: FeeMethod,
     /* Side (buy/sell). */
@@ -225,19 +224,19 @@ pub struct OrderType<AccountId, Moment> {
     /* Kind of sale. */
     saleKind: SaleKind,
     /* Target. */
-    target: Address,
+    target: AccountId,
     /* Vec<u8>. */
-    howToCall: Vec<u8>,
+    howToCall: HowToCall,
     /* Calldata. */
     calldata: Bytes,
     /* Calldata replacement pattern, or an empty byte array for no replacement. */
     replacementPattern: Bytes,
-    /* Static call target, zero-Address for no static call. */
-    staticTarget: Address,
+    /* Static call target, zero-AccountId for no static call. */
+    staticTarget: AccountId,
     /* Static call extra data. */
     staticExtradata: Bytes,
-    /* Token used to pay for the order, or the zero-Address as a sentinel value for Ether. */
-    paymentToken: Address,
+    /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
+    paymentToken: AccountId,
     /* Base price of the order (in paymentTokens). */
     basePrice: u64,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
@@ -248,6 +247,7 @@ pub struct OrderType<AccountId, Moment> {
     expirationTime: u64,
     /* OrderType salt, used to prevent duplicate hashes. */
     salt: u64,
+registered: Moment,
 }
 
 //exchange core
@@ -256,7 +256,7 @@ pub struct OrderType<AccountId, Moment> {
 
 // pub trait Trait: system::Trait {
 //     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-//     type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
+//     type Public: IdentifyAccount<AccountId = ContractSelf::get()> + Clone;
 //     type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
 // }
 
@@ -270,31 +270,31 @@ pub trait Trait: system::Trait + timestamp::Trait {
 decl_storage! {
     trait Store for Module<T: Trait> as OrderRegistry {
         NextOrderIndex: u64;
-pub contract_self:AccountId;
+pub ContractSelf:AccountId;
  // /* The token used to pay exchange fees. */
-    // ERC20 public exchangeToken;
-pub exchangeToken:AccountId;
+    // ERC20 public ExchangeToken;
+pub ExchangeToken:AccountId;
     // /* User registry. */
     // ProxyRegistry public registry;
-pub registry:AccountId;
+pub Registry:AccountId;
     // /* Token transfer proxy. */
-    // TokenTransferProxy public tokenTransferProxy;
-pub tokenTransferProxy:AccountId;
+    // TokenTransferProxy public TokenTransferProxy;
+pub TokenTransferProxy:AccountId;
     // /* Cancelled / finalized orders, by hash. */
-    // mapping(Vec<u8> => bool) public cancelledOrFinalized;
-  pub cancelledOrFinalized get(fn cancelled_or_finalized): map hasher(blake2_128_concat) Vec<u8> => bool;
+    // mapping(Vec<u8> => bool) public CancelledOrFinalized;
+  pub CancelledOrFinalized get(fn cancelled_or_finalized): map hasher(blake2_128_concat) Vec<u8> => bool;
     // /* Orders verified by on-chain approval (alternative to ECDSA signatures so that smart contracts can place orders directly). */
-    // mapping(Vec<u8> => bool) public approvedOrders;
-  pub approvedOrders get(fn approved_orders): map hasher(blake2_128_concat) Vec<u8> => bool;
+    // mapping(Vec<u8> => bool) public ApprovedOrders;
+  pub ApprovedOrders get(fn approved_orders): map hasher(blake2_128_concat) Vec<u8> => bool;
     // /* For split fee orders, minimum required protocol maker fee, in basis points. Paid to owner (who can change it). */
-    // u64 public minimumMakerProtocolFee = 0;
-pub minimumMakerProtocolFee:u64;
+    // u64 public MinimumMakerProtocolFee = 0;
+pub MinimumMakerProtocolFee:u64;
     // /* For split fee orders, minimum required protocol taker fee, in basis points. Paid to owner (who can change it). */
-    // u64 public minimumTakerProtocolFee = 0;
-pub minimumTakerProtocolFee:u64;
+    // u64 public MinimumTakerProtocolFee = 0;
+pub MinimumTakerProtocolFee:u64;
     // /* Recipient of protocol fees. */
-    // Address public protocolFeeRecipient;
-pub protocolFeeRecipient:Address;
+    // AccountId public ProtocolFeeRecipient;
+pub ProtocolFeeRecipient:AccountId;
 
 
  }
@@ -305,14 +305,14 @@ decl_event!(
     where
         AccountId = <T as system::Trait>::AccountId,
     {
-        // event OrderApprovedPartOne    (Vec<u8> indexed hash, Address exchange, Address indexed maker, Address taker,
+        // event OrderApprovedPartOne    (Vec<u8> indexed hash, AccountId exchange, AccountId indexed maker, AccountId taker,
         // u64 makerRelayerFee, u64 takerRelayerFee, u64 makerProtocolFee, u64 takerProtocolFee,
-        // Address indexed feeRecipient, FeeMethod feeMethod, SaleKindInterface.Side side, SaleKindInterface.SaleKind saleKind, Address target);
+        // AccountId indexed feeRecipient, FeeMethod feeMethod, SaleKindInterface.Side side, SaleKindInterface.SaleKind saleKind, AccountId target);
         // event OrderApprovedPartTwo    (Vec<u8> indexed hash, AuthenticatedProxy.Vec<u8> howToCall, Vec<u8> calldata, Vec<u8> replacementPattern,
-        // Address staticTarget, Vec<u8> staticExtradata, Address paymentToken, u64 basePrice,
+        // AccountId staticTarget, Vec<u8> staticExtradata, AccountId paymentToken, u64 basePrice,
         // u64 extra, u64 listingTime, u64 expirationTime, u64 salt, bool orderbookInclusionDesired);
         // event OrderCancelled          (Vec<u8> indexed hash);
-        // event OrdersMatched           (Vec<u8> buyHash, Vec<u8> sellHash, Address indexed maker, Address indexed taker, u64 price, Vec<u8> indexed metadata);
+        // event OrdersMatched           (Vec<u8> buyHash, Vec<u8> sellHash, AccountId indexed maker, AccountId indexed taker, u64 price, Vec<u8> indexed metadata);
       OrderApprovedPartOne(
             Vec<u8>,
             AccountId,
@@ -336,7 +336,7 @@ decl_event!(
             AccountId,
             Vec<u8>,
             AccountId,
-            Vec<u8>,
+            u64,
             u64,
             u64,
             u64,
@@ -460,7 +460,7 @@ impl<T: Trait> Module<T> {
      * @dev Call hashOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn hashOrder_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
@@ -470,7 +470,7 @@ impl<T: Trait> Module<T> {
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
     ) -> Vec<u8> {
-      Self::hashOrder(Self::buildOrderType(
+      Self::hashOrder(&Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -501,7 +501,7 @@ impl<T: Trait> Module<T> {
      * @dev Call hashToSign - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn hashToSign_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
@@ -542,17 +542,17 @@ impl<T: Trait> Module<T> {
      * @dev Call validateOrderParameters - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn validateOrderParameters_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
         saleKind: SaleKind,
-        howToCall: Vec<u8>,
+        howToCall: HowToCall,
         calldata: Vec<u8>,
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
     ) -> bool {
-        let order: OrderType = Self::buildOrderType(
+        let order: OrderType<T::AccountId,T::Moment> = Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -577,25 +577,25 @@ impl<T: Trait> Module<T> {
             uints[7],
             uints[8],
         );
-      Self::validateOrderParameters(order)
+      Self::validateOrderParameters(&order)
     }
 
     /**
      * @dev Call validateOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn validateOrder_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
         saleKind: SaleKind,
-        howToCall: Vec<u8>,
+        howToCall: HowToCall,
         calldata: Vec<u8>,
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
         sig: Signature,
     ) -> bool {
-        let order: OrderType = Self::buildOrderType(
+        let order: OrderType<T::AccountId,T::Moment> = Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -620,25 +620,25 @@ impl<T: Trait> Module<T> {
             uints[7],
             uints[8],
         );
-      Self::validateOrder(Self::hashToSign(order), order, sig)
+      Self::validateOrder(Self::hashToSign(&order), &order, sig)
     }
 
     /**
      * @dev Call approveOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn approveOrder_(origin:AccountId,
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
         saleKind: SaleKind,
-        howToCall: Vec<u8>,
+        howToCall: HowToCall,
         calldata: Vec<u8>,
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
         orderbookInclusionDesired: bool,
     ) -> Result<(), Error<T>> {
-       let  order: OrderType = Self::buildOrderType(
+       let  order: OrderType<T::AccountId,T::Moment> = Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -663,7 +663,7 @@ impl<T: Trait> Module<T> {
             uints[7],
             uints[8],
         );
-      Self::approveOrder(origin,order, orderbookInclusionDesired);
+      Self::approveOrder(origin,&order, orderbookInclusionDesired);
         Ok(())
     }
 
@@ -671,19 +671,19 @@ impl<T: Trait> Module<T> {
      * @dev Call cancelOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn cancelOrder_(origin:AccountId,
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
         saleKind: SaleKind,
-        howToCall: Vec<u8>,
+        howToCall: HowToCall,
         calldata: Vec<u8>,
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
         sig: Signature,
     ) -> Result<(), Error<T>> {
       Self::cancelOrder(origin,
-            Self::buildOrderType(
+            &Self::buildOrderType(
                 addrs[0],
                 addrs[1],
                 addrs[2],
@@ -717,17 +717,17 @@ impl<T: Trait> Module<T> {
      * @dev Call calculateCurrentPrice - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn calculateCurrentPrice_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
         side: Side,
         saleKind: SaleKind,
-        howToCall: Vec<u8>,
+        howToCall: HowToCall,
         calldata: Vec<u8>,
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
     ) -> u64 {
-      Self::calculateCurrentPrice(Self::buildOrderType(
+      Self::calculateCurrentPrice(&Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -758,7 +758,7 @@ impl<T: Trait> Module<T> {
      * @dev Call ordersCanMatch - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn ordersCanMatch_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethodsSidesKindsHowToCalls: Vec<u8>,
         calldataBuy: Vec<u8>,
@@ -786,7 +786,7 @@ impl<T: Trait> Module<T> {
             replacementPatternBuy,
             addrs[5],
             staticExtradataBuy,
-            (addrs[6]),
+            addrs[6],
             uints[4],
             uints[5],
             uints[6],
@@ -811,7 +811,7 @@ impl<T: Trait> Module<T> {
             replacementPatternSell,
             addrs[12],
             staticExtradataSell,
-            (addrs[13]),
+            addrs[13],
             uints[13],
             uints[14],
             uints[15],
@@ -835,11 +835,11 @@ impl<T: Trait> Module<T> {
         sellCalldata: Vec<u8>,
         sellReplacementPattern: Vec<u8>,
     ) -> bool {
-        if (buyReplacementPattern.length > 0) {
-            Self::guardedArrayReplace(buyCalldata, sellCalldata, buyReplacementPattern);
+        if buyReplacementPattern.len() > 0 {
+            Self::guardedArrayReplace(&mut buyCalldata, sellCalldata, buyReplacementPattern);
         }
-        if (sellReplacementPattern.length > 0) {
-            Self::guardedArrayReplace(sellCalldata, buyCalldata, sellReplacementPattern);
+        if sellReplacementPattern.len() > 0 {
+            Self::guardedArrayReplace(&mut sellCalldata, buyCalldata, sellReplacementPattern);
         }
 
         Self::arrayEq(buyCalldata, sellCalldata)
@@ -849,7 +849,7 @@ impl<T: Trait> Module<T> {
      * @dev Call calculateMatchPrice - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn calculateMatchPrice_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethodsSidesKindsHowToCalls: Vec<u8>,
         calldataBuy: Vec<u8>,
@@ -877,7 +877,7 @@ impl<T: Trait> Module<T> {
             replacementPatternBuy,
             addrs[5],
             staticExtradataBuy,
-            (addrs[6]),
+            addrs[6],
             uints[4],
             uints[5],
             uints[6],
@@ -902,7 +902,7 @@ impl<T: Trait> Module<T> {
             replacementPatternSell,
             addrs[12],
             staticExtradataSell,
-            (addrs[13]),
+            addrs[13],
             uints[13],
             uints[14],
             uints[15],
@@ -916,7 +916,7 @@ impl<T: Trait> Module<T> {
      * @dev Call atomicMatch - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
     fn atomicMatch_(
-        addrs: Vec<Address>,
+        addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethodsSidesKindsHowToCalls: Vec<u8>,
         calldataBuy: Vec<u8>,
@@ -929,6 +929,8 @@ impl<T: Trait> Module<T> {
         rssMetadata: Vec<u8>,
     ) -> Result<(), Error<T>> {
       Self::atomicMatch(
+            origin,
+            0,
             Self::buildOrderType(
                 addrs[0],
                 addrs[1],
@@ -947,7 +949,7 @@ impl<T: Trait> Module<T> {
                 replacementPatternBuy,
                 addrs[5],
                 staticExtradataBuy,
-                (addrs[6]),
+                addrs[6],
                 uints[4],
                 uints[5],
                 uints[6],
@@ -973,7 +975,7 @@ impl<T: Trait> Module<T> {
                 replacementPatternSell,
                 addrs[12],
                 staticExtradataSell,
-                (addrs[13]),
+                addrs[13],
                 uints[13],
                 uints[14],
                 uints[15],
@@ -994,7 +996,7 @@ impl<T: Trait> Module<T> {
     fn changeMinimumMakerProtocolFee(newMinimumMakerProtocolFee: u64) -> Result<(), Error<T>>
 // onlyOwner
     {
-        minimumMakerProtocolFee.put(newMinimumMakerProtocolFee);
+        MinimumMakerProtocolFee::put(newMinimumMakerProtocolFee);
         Ok(())
     }
 
@@ -1004,35 +1006,35 @@ impl<T: Trait> Module<T> {
      */
     fn changeMinimumTakerProtocolFee(newMinimumTakerProtocolFee: u64) -> Result<(), Error<T>> {
         // onlyOwner
-        minimumTakerProtocolFee.put(newMinimumTakerProtocolFee);
+        MinimumTakerProtocolFee::put(newMinimumTakerProtocolFee);
         Ok(())
     }
 
     /**
      * @dev Change the protocol fee recipient (only:owner)
-     * @param newProtocolFeeRecipient New protocol fee recipient Address
+     * @param newProtocolFeeRecipient New protocol fee recipient AccountId
      */
-    fn changeProtocolFeeRecipient(newProtocolFeeRecipient: Address) -> Result<(), Error<T>> {
+    fn changeProtocolFeeRecipient(newProtocolFeeRecipient: AccountId) -> Result<(), Error<T>> {
         // onlyOwner
-        protocolFeeRecipient.put(newProtocolFeeRecipient);
+        ProtocolFeeRecipient::put(newProtocolFeeRecipient);
         Ok(())
     }
 
     /**
      * @dev Transfer tokens
      * @param token Token to transfer
-     * @param from Address to charge fees
-     * @param to Address to receive fees
+     * @param from AccountId to charge fees
+     * @param to AccountId to receive fees
      * @param amount Amount of protocol tokens to charge
      */
     fn transferTokens(
-        token: Address,
-        from: Address,
-        to: Address,
+        token: AccountId,
+        from: AccountId,
+        to: AccountId,
         amount: u64,
     ) -> Result<(), Error<T>> {
         if amount > 0 {
-            // ensure!(tokenTransferProxy.transferFrom(token, from, to, amount), Error::<T>::OrderIdMissing);
+            // ensure!(TokenTransferProxy.transferFrom(token, from, to, amount), Error::<T>::OrderIdMissing);
             // let call = Box::new(Call::Balances(BalancesCall::transfer(6, 1)));
             // ensure!(Proxy::proxy(Origin::signed(2), 1, None, call.clone()), Error::<T>::OrderIdMissing);
         }
@@ -1041,12 +1043,12 @@ impl<T: Trait> Module<T> {
 
     /**
      * @dev Charge a fee in protocol tokens
-     * @param from Address to charge fees
-     * @param to Address to receive fees
+     * @param from AccountId to charge fees
+     * @param to AccountId to receive fees
      * @param amount Amount of protocol tokens to charge
      */
-    fn chargeProtocolFee(from: Address, to: Address, amount: u64) -> Result<(), Error<T>> {
-      Self::transferTokens(exchangeToken::get(), from, to, amount);
+    fn chargeProtocolFee(from: AccountId, to: AccountId, amount: u64) -> Result<(), Error<T>> {
+      Self::transferTokens(ExchangeToken::get(), from, to, amount);
         Ok(())
     }
 
@@ -1070,7 +1072,7 @@ impl<T: Trait> Module<T> {
      * @return Hash of message prefix and order hash per Ethereum format
      */
     fn hashToSign(order: &OrderType<T::AccountId, T::Moment>) -> Vec<u8> {
-        sp_io::hashing::keccak256("\x19Ethereum Signed Message:\n32", hashOrder(order))
+        sp_io::hashing::keccak256("\x19Ethereum Signed Message:\n32", Self::hashOrder(&order))
     }
 
     /**
@@ -1079,7 +1081,7 @@ impl<T: Trait> Module<T> {
      * @param sig ECDSA signature
      */
     fn requireValidOrder(order: &OrderType<T::AccountId, T::Moment>, sig: &Signature) -> Vec<u8> {
-        let hash: Vec<u8> = Self::hashToSign(order);
+        let hash: Vec<u8> = Self::hashToSign(&order);
         ensure!(Self::validateOrder(hash, order, sig), Error::<T>::OrderIdMissing);
         hash
     }
@@ -1102,8 +1104,8 @@ impl<T: Trait> Module<T> {
 
         /* If using the split fee method, order must have sufficient protocol fees. */
         if order.feeMethod == FeeMethod::SplitFee
-            && (order.makerProtocolFee < minimumMakerProtocolFee::get()
-                || order.takerProtocolFee < minimumTakerProtocolFee::get())
+            && (order.makerProtocolFee < MinimumMakerProtocolFee::get()
+                || order.takerProtocolFee < MinimumTakerProtocolFee::get())
         {
             return false;
         }
@@ -1121,18 +1123,18 @@ impl<T: Trait> Module<T> {
         /* Not done in an if-conditional to prevent unnecessary ecrecover evaluation, which seems to happen even though it should short-circuit. */
 
         /* OrderType must have valid parameters. */
-        if !validateOrderParameters(order) {
+        if !Self::validateOrderParameters(&order) {
             return false;
         }
 
         /* OrderType must have not been canceled or already filled. */
-        if cancelledOrFinalized.get(hash) {
+        if CancelledOrFinalized::get(hash) {
             return false;
         }
 
         /* OrderType authentication. OrderType must be either:
         (a) previously approved */
-        if approvedOrders.get(hash) {
+        if ApprovedOrders::get(hash) {
             return true;
         }
 
@@ -1140,7 +1142,7 @@ impl<T: Trait> Module<T> {
         // if ecrecover(hash, sig.v, sig.r, sig.s) == order.maker {
         //     return true;
         // }
-        if check_signature(sig, hash, order.maker) == OK(()) {
+        if Self::check_signature(&sig, &hash, &order.maker).is_ok() {
             return true;
         }
 
@@ -1177,15 +1179,15 @@ impl<T: Trait> Module<T> {
         ensure!(origin == order.maker, Error::<T>::OrderIdMissing);
 
         /* Calculate order hash. */
-        let hash: Vec<u8> = Self::hashToSign(order);
+        let hash: Vec<u8> = Self::hashToSign(&order);
 
         /* Assert order has not already been approved. */
-        ensure!(!approvedOrders.get(hash), Error::<T>::OrderIdMissing);
+        ensure!(!ApprovedOrders::get(hash), Error::<T>::OrderIdMissing);
 
         /* EFFECTS */
 
         /* Mark order as approved. */
-        approvedOrders.insert(hash, true);
+        ApprovedOrders::insert(hash, true);
 
         /* Log approval event. Must be split in two due to Solidity stack size limitations. */
         {
@@ -1241,7 +1243,7 @@ impl<T: Trait> Module<T> {
         /* EFFECTS */
 
         /* Mark order as cancelled, preventing it from being matched. */
-        cancelledOrFinalized.insert(hash, true);
+        CancelledOrFinalized::insert(hash, true);
 
         /* Log cancel event. */
         Self::deposit_event(RawEvent::OrderCancelled(hash));
@@ -1270,7 +1272,7 @@ impl<T: Trait> Module<T> {
      * @param sell Sell-side order
      * @return Match price
      */
-    fn calculateMatchPrice(buy: OrderType, sell: OrderType) -> u64 {
+    fn calculateMatchPrice(buy: OrderType<T::AccountId,T::Moment>, sell: OrderType<T::AccountId,T::Moment>) -> u64 {
         /* Calculate sell price. */
         let sellPrice: u64 = Self::calculateFinalPrice(
             sell.side,
@@ -1295,11 +1297,13 @@ impl<T: Trait> Module<T> {
         ensure!(buyPrice >= sellPrice, Error::<T>::OrderIdMissing);
 
         /* Maker/taker priority. */
-        if sell.feeRecipient != Address{} {
+       let price:u64 =  if sell.feeRecipient != ContractSelf::get() {
             sellPrice
         } else {
             buyPrice
-        }
+        };
+
+        price
     }
 
     /**
@@ -1307,10 +1311,10 @@ impl<T: Trait> Module<T> {
      * @param buy Buy-side order
      * @param sell Sell-side order
      */
-    fn executeFundsTransfer(msg_value: u64, buy: OrderType, sell: OrderType) -> u64 {
-        let originprotocolFeeRecipient = protocolFeeRecipient::get();
+    fn executeFundsTransfer(msg_value: u64, buy: OrderType<T::AccountId,T::Moment>, sell: OrderType<T::AccountId,T::Moment>) -> u64 {
+        let originprotocolFeeRecipient = ProtocolFeeRecipient::get();
         /* Only payable in the special case of unwrapped Ether. */
-        if sell.paymentToken != Address{} {
+        if sell.paymentToken != ContractSelf::get() {
             ensure!(msg_value == 0, Error::<T>::OrderIdMissing);
         }
 
@@ -1318,7 +1322,7 @@ impl<T: Trait> Module<T> {
        let  price: u64 = Self::calculateMatchPrice(buy, sell);
 
         /* If paying using a token (Ether:not), transfer tokens. This is done prior to fee payments to that a seller will have tokens before being charged fees. */
-        if price > 0 && sell.paymentToken != Address{} {
+        if price > 0 && sell.paymentToken != ContractSelf::get() {
           Self::transferTokens(sell.paymentToken, buy.maker, sell.maker, price);
         }
 
@@ -1329,7 +1333,7 @@ impl<T: Trait> Module<T> {
         let requiredAmount: u64 = price;
 
         /* Determine maker/taker and charge fees accordingly. */
-        if sell.feeRecipient != Address{} {
+        if sell.feeRecipient != ContractSelf::get() {
             /* Sell-side order is maker. */
 
             /* Assert taker fee is less than or equal to maximum fee specified by buyer. */
@@ -1348,13 +1352,13 @@ impl<T: Trait> Module<T> {
                 /* Maker fees are deducted from the token amount that the maker receives. Taker fees are extra tokens that must be paid by the taker. */
 
                 if sell.makerRelayerFee > 0 {
-                    let makerRelayerFee: u64 = ((sell.makerRelayerFee * price) / INVERSE_BASIS_POINT);
-                    if sell.paymentToken == Address{} {
-                        receiveAmount = (receiveAmount - makerRelayerFee);
+                    let makerRelayerFee: u64 = sell.makerRelayerFee * price / INVERSE_BASIS_POINT;
+                    if sell.paymentToken == ContractSelf::get() {
+                        receiveAmount = receiveAmount - makerRelayerFee;
                         // sell.feeRecipient.transfer(makerRelayerFee);
                       Self::transferTokens(
-                            Self::AccountId,
-                            Self::AccountId,
+                            ContractSelf::get(),
+                            ContractSelf::get(),
                             sell.feeRecipient,
                             makerRelayerFee,
                         );
@@ -1369,13 +1373,13 @@ impl<T: Trait> Module<T> {
                 }
 
                 if sell.takerRelayerFee > 0 {
-                    let takerRelayerFee: u64 = ((sell.takerRelayerFee * price) / INVERSE_BASIS_POINT);
-                    if sell.paymentToken == Address{} {
-                        requiredAmount = (requiredAmount + takerRelayerFee);
+                    let takerRelayerFee: u64 = sell.takerRelayerFee * price / INVERSE_BASIS_POINT;
+                    if sell.paymentToken == ContractSelf::get() {
+                        requiredAmount = requiredAmount + takerRelayerFee;
                         // sell.feeRecipient.transfer(takerRelayerFee);
                       Self::transferTokens(
-                            Self::AccountId,
-                            Self::AccountId,
+                            ContractSelf::get(),
+                            ContractSelf::get(),
                             sell.feeRecipient,
                             takerRelayerFee,
                         );
@@ -1390,13 +1394,13 @@ impl<T: Trait> Module<T> {
                 }
 
                 if sell.makerProtocolFee > 0 {
-                    let makerProtocolFee: u64 = ((sell.makerProtocolFee * price) / INVERSE_BASIS_POINT);
-                    if sell.paymentToken == Address{} {
-                        receiveAmount = (receiveAmount - makerProtocolFee);
-                        // protocolFeeRecipient.transfer(makerProtocolFee);
+                    let makerProtocolFee: u64 = sell.makerProtocolFee * price / INVERSE_BASIS_POINT;
+                    if sell.paymentToken == ContractSelf::get() {
+                        receiveAmount = receiveAmount - makerProtocolFee;
+                        // ProtocolFeeRecipient.transfer(makerProtocolFee);
                       Self::transferTokens(
-                            Self::AccountId,
-                            Self::AccountId,
+                            ContractSelf::get(),
+                            ContractSelf::get(),
                             originprotocolFeeRecipient,
                             makerProtocolFee,
                         );
@@ -1411,13 +1415,13 @@ impl<T: Trait> Module<T> {
                 }
 
                 if sell.takerProtocolFee > 0 {
-                    let takerProtocolFee: u64 = ((sell.takerProtocolFee * price) / INVERSE_BASIS_POINT);
-                    if sell.paymentToken == Address{} {
-                        requiredAmount = (requiredAmount + takerProtocolFee);
-                        // protocolFeeRecipient.transfer(takerProtocolFee);
+                    let takerProtocolFee: u64 = sell.takerProtocolFee * price / INVERSE_BASIS_POINT;
+                    if sell.paymentToken == ContractSelf::get() {
+                        requiredAmount = requiredAmount + takerProtocolFee;
+                        // ProtocolFeeRecipient.transfer(takerProtocolFee);
                       Self::transferTokens(
-                            Self::AccountId,
-                            Self::AccountId,
+                            ContractSelf::get(),
+                            ContractSelf::get(),
                             originprotocolFeeRecipient,
                             takerProtocolFee,
                         );
@@ -1448,7 +1452,7 @@ impl<T: Trait> Module<T> {
 
             if sell.feeMethod == FeeMethod::SplitFee {
                 /* The Exchange does not escrow Ether, so direct Ether can only be used to with sell-side maker / buy-side taker orders. */
-                ensure!(sell.paymentToken != Address{}, Error::<T>::OrderIdMissing);
+                ensure!(sell.paymentToken != ContractSelf::get(), Error::<T>::OrderIdMissing);
 
                 /* Assert taker fee is less than or equal to maximum fee specified by seller. */
                 ensure!(
@@ -1457,7 +1461,7 @@ impl<T: Trait> Module<T> {
                 );
 
                 if buy.makerRelayerFee > 0 {
-                    makerRelayerFee = ((buy.makerRelayerFee * price) / INVERSE_BASIS_POINT);
+                   let makerRelayerFee =buy.makerRelayerFee * price / INVERSE_BASIS_POINT;
                   Self::transferTokens(
                         sell.paymentToken,
                         buy.maker,
@@ -1467,7 +1471,7 @@ impl<T: Trait> Module<T> {
                 }
 
                 if buy.takerRelayerFee > 0 {
-                    takerRelayerFee = ((buy.takerRelayerFee * price) / INVERSE_BASIS_POINT);
+                   let takerRelayerFee = buy.takerRelayerFee * price / INVERSE_BASIS_POINT;
                   Self::transferTokens(
                         sell.paymentToken,
                         sell.maker,
@@ -1477,7 +1481,7 @@ impl<T: Trait> Module<T> {
                 }
 
                 if buy.makerProtocolFee > 0 {
-                    makerProtocolFee = ((buy.makerProtocolFee * price) / INVERSE_BASIS_POINT);
+                   let makerProtocolFee = buy.makerProtocolFee * price / INVERSE_BASIS_POINT;
                   Self::transferTokens(
                         sell.paymentToken,
                         buy.maker,
@@ -1487,7 +1491,7 @@ impl<T: Trait> Module<T> {
                 }
 
                 if buy.takerProtocolFee > 0 {
-                    takerProtocolFee = ((buy.takerProtocolFee * price) / INVERSE_BASIS_POINT);
+                    let takerProtocolFee = buy.takerProtocolFee * price / INVERSE_BASIS_POINT;
                   Self::transferTokens(
                         sell.paymentToken,
                         sell.maker,
@@ -1504,16 +1508,16 @@ impl<T: Trait> Module<T> {
             }
         }
 
-        if sell.paymentToken == Address{} {
+        if sell.paymentToken == ContractSelf::get() {
             /* Special-case Ether, order must be matched by buyer. */
             ensure!(msg_value >= requiredAmount, Error::<T>::OrderIdMissing);
             // sell.maker.transfer(receiveAmount);
-          Self::transferTokens(Self::AccountId, Self::AccountId, sell.maker, receiveAmount);
+          Self::transferTokens(ContractSelf::get(), ContractSelf::get(), sell.maker, receiveAmount);
             /* Allow overshoot for variable-price auctions, refund difference. */
-            let diff: u64 = (msg_value - requiredAmount);
+            let diff: u64 = msg_value - requiredAmount;
             if diff > 0 {
                 // buy.maker.transfer(diff);
-              Self::transferTokens(Self::AccountId, Self::AccountId, buy.maker, diff);
+              Self::transferTokens(ContractSelf::get(), ContractSelf::get(), buy.maker, diff);
             }
         }
 
@@ -1528,27 +1532,27 @@ impl<T: Trait> Module<T> {
      * @param sell Sell-side order
      * @return Whether or not the two orders can be matched
      */
-    fn ordersCanMatch(buy: OrderType, sell: OrderType) -> bool {
+    fn ordersCanMatch(buy: OrderType<T::AccountId,T::Moment>, sell: OrderType<T::AccountId,T::Moment>) -> bool {
         (
             //  Must be opposite-side.
-            (buy.side == SaleKindInterface.Side.Buy && sell.side == SaleKindInterface.Side.Sell) &&
+            (buy.side == Side::Buy && sell.side == Side::Sell) &&
             // Must use same fee method.
             (buy.feeMethod == sell.feeMethod) &&
             // Must use same payment token. 
             (buy.paymentToken == sell.paymentToken) &&
             // Must match maker/taker addresses. 
-            (sell.taker == Address{} || sell.taker == buy.maker) &&
-            (buy.taker == Address{} || buy.taker == sell.maker) &&
+            (sell.taker == ContractSelf::get() || sell.taker == buy.maker) &&
+            (buy.taker == ContractSelf::get() || buy.taker == sell.maker) &&
             // One must be maker and the other must be taker (no bool XOR Solidity:in). 
-            ((sell.feeRecipient == Address{} && buy.feeRecipient != Address{}) || (sell.feeRecipient != Address{} && buy.feeRecipient == Address{})) &&
+            ((sell.feeRecipient == ContractSelf::get() && buy.feeRecipient != ContractSelf::get()) || (sell.feeRecipient != ContractSelf::get() && buy.feeRecipient == ContractSelf::get())) &&
             // Must match target. 
             (buy.target == sell.target) &&
             // Must match howToCall. 
             (buy.howToCall == sell.howToCall) &&
             // Buy-side order must be settleable. 
-            SaleKindInterface.canSettleOrder(buy.listingTime, buy.expirationTime) &&
+            Self::canSettleOrder(buy.listingTime, buy.expirationTime) &&
             // Sell-side order must be settleable. 
-            SaleKindInterface.canSettleOrder(sell.listingTime, sell.expirationTime)
+            Self::canSettleOrder(sell.listingTime, sell.expirationTime)
         )
     }
 
@@ -1562,29 +1566,30 @@ impl<T: Trait> Module<T> {
     fn atomicMatch(
         msg_sender: AccountId,
         msg_value: u64,
-        buy: OrderType,
-        buySig: Sig,
-        sell: OrderType,
+        buy: OrderType<T::AccountId,T::Moment>,
+        buySig: Signature,
+        sell: OrderType<T::AccountId,T::Moment>,
         sellSig: Signature,
         metadata: Vec<u8>,
-    ) {
+    ) -> Result<(),Error<T>>
+{
         //reentrancyGuard
         /* CHECKS */
 
         /* Ensure buy order validity and calculate hash if necessary. */
-        let buyHash: Vec<u8> = vec![];
+        let buyHash: Vec<u8> = ContractSelf::get();
         if buy.maker == msg_sender {
-            ensure!(Self::validateOrderParameters(buy), Error::<T>::OrderIdMissing);
+            ensure!(Self::validateOrderParameters(&buy), Error::<T>::OrderIdMissing);
         } else {
-            buyHash = requireValidOrder(buy, buySig);
+            buyHash = Self::requireValidOrder(&buy, buySig);
         }
 
         /* Ensure sell order validity and calculate hash if necessary. */
-        let sellHash: Vec<u8> = vec![];
+        let sellHash: Vec<u8> = ContractSelf::get();
         if sell.maker == msg_sender {
-            ensure!(Self::validateOrderParameters(sell), Error::<T>::OrderIdMissing);
+            ensure!(Self::validateOrderParameters(&sell), Error::<T>::OrderIdMissing);
         } else {
-            sellHash = requireValidOrder(sell, sellSig);
+            sellHash = Self::requireValidOrder(&sell, sellSig);
         }
 
         /* Must be matchable. */
@@ -1592,18 +1597,18 @@ impl<T: Trait> Module<T> {
 
         /* Target must exist (prevent malicious selfdestructs just prior to settlement:order). */
         // u64 size;
-        // Address target = sell.target;
+        // AccountId target = sell.target;
         // assembly {
         //     size := extcodesize(target)
         // }
         // ensure!(size > 0, Error::<T>::OrderIdMissing);
 
         /* Must match calldata after replacement, if specified. */
-        if buy.replacementPattern.length > 0 {
-            Self::guardedArrayReplace(buy.calldata, sell.calldata, buy.replacementPattern);
+        if buy.replacementPattern.len() > 0 {
+            Self::guardedArrayReplace(&mut buy.calldata, sell.calldata, buy.replacementPattern);
         }
-        if sell.replacementPattern.length > 0 {
-            Self::guardedArrayReplace(sell.calldata, buy.calldata, sell.replacementPattern);
+        if sell.replacementPattern.len() > 0 {
+            Self::guardedArrayReplace(&mut sell.calldata, buy.calldata, sell.replacementPattern);
         }
         ensure!(
             Self::arrayEq(buy.calldata, sell.calldata),
@@ -1611,13 +1616,13 @@ impl<T: Trait> Module<T> {
         );
 
         // /* Retrieve delegateProxy contract. */
-        // OwnableDelegateProxy delegateProxy = registry.proxies(sell.maker);
+        // OwnableDelegateProxy delegateProxy = Registry.proxies(sell.maker);
 
         // /* Proxy must exist. */
-        // ensure!(delegateProxy != Address{}, Error::<T>::OrderIdMissing);
+        // ensure!(delegateProxy != ContractSelf::get(), Error::<T>::OrderIdMissing);
 
         // /* Assert implementation. */
-        // ensure!(delegateProxy.implementation() == registry.delegateProxyImplementation(), Error::<T>::OrderIdMissing);
+        // ensure!(delegateProxy.implementation() == Registry.delegateProxyImplementation(), Error::<T>::OrderIdMissing);
 
         // /* Access the passthrough AuthenticatedProxy. */
         // AuthenticatedProxy proxy = AuthenticatedProxy(delegateProxy);
@@ -1626,32 +1631,33 @@ impl<T: Trait> Module<T> {
 
         /* Mark previously signed or approved orders as finalized. */
         if msg_sender != buy.maker {
-            cancelledOrFinalized.insert(buyHash, true);
+            CancelledOrFinalized::insert(buyHash, true);
         }
         if msg_sender != sell.maker {
-            cancelledOrFinalized.insert(sellHash, true);
+            CancelledOrFinalized::insert(sellHash, true);
         }
 
         /* INTERACTIONS */
 
         /* Execute funds transfer and pay fees. */
-        let price: u64 = executeFundsTransfer(msg_value, buy, sell);
+        let price: u64 = Self::executeFundsTransfer(msg_value, buy, sell);
 
         /* Execute specified call through proxy. */
-        ensure!(
-            proxy.proxy(sell.target, sell.howToCall, sell.calldata),
-            Error::<T>::OrderIdMissing
-        );
+        //TODO
+        // ensure!(
+        //     proxy.proxy(sell.target, sell.howToCall, sell.calldata),
+        //     Error::<T>::OrderIdMissing
+        // );
 
         /* Static calls are intentionally done after the effectful call so they can check resulting state. */
 
         /* Handle buy-side static call if specified. */
-        // if buy.staticTarget != Address{} {
+        // if buy.staticTarget != ContractSelf::get() {
         //     ensure!(Self::staticCall(buy.staticTarget, sell.calldata, buy.staticExtradata), Error::<T>::OrderIdMissing);
         // }
 
         // /* Handle sell-side static call if specified. */
-        // if sell.staticTarget != Address{} {
+        // if sell.staticTarget != ContractSelf::get() {
         //     ensure!(Self::staticCall(sell.staticTarget, sell.calldata, sell.staticExtradata), Error::<T>::OrderIdMissing);
         // }
 
@@ -1659,12 +1665,12 @@ impl<T: Trait> Module<T> {
         Self::deposit_event(RawEvent::OrdersMatched(
             buyHash,
             sellHash,
-            if sell.feeRecipient != Address{} {
+            if sell.feeRecipient != ContractSelf::get() {
                 sell.maker
             } else {
                 buy.maker
             },
-            if sell.feeRecipient != Address{} {
+            if sell.feeRecipient != ContractSelf::get() {
                 buy.maker
             } else {
                 sell.maker
@@ -1683,7 +1689,7 @@ impl<T: Trait> Module<T> {
      */
     fn validateParameters(saleKind: SaleKind, expirationTime: u64) -> bool {
         /* Auctions must have a set expiration date. */
-        (saleKind == SaleKind::FixedPrice || expirationTime > 0)
+        saleKind == SaleKind::FixedPrice || expirationTime > 0
     }
 
     /**
@@ -1693,7 +1699,7 @@ impl<T: Trait> Module<T> {
      * @param expirationTime OrderType expiration time
      */
     fn canSettleOrder(listingTime: u64, expirationTime: u64) -> bool {
-        (listingTime < now) && (expirationTime == 0 || now < expirationTime)
+        (listingTime < <timestamp::Module<T>>::now().into<u64>()) && (expirationTime == 0 || <timestamp::Module<T>>::now().into<u64>() < expirationTime)
     }
 
     /**
@@ -1717,7 +1723,7 @@ impl<T: Trait> Module<T> {
         if saleKind == SaleKind::FixedPrice {
             return basePrice;
         } else if saleKind == SaleKind::DutchAuction {
-            let diff: u64 = extra * (now - listingTime) / (expirationTime - listingTime);
+            let diff: u64 = extra * (<timestamp::Module<T>>::now().into<u64>() - listingTime) / (expirationTime - listingTime);
             if side == Side::Sell {
                 /* Sell-side - start price: basePrice. End price: basePrice - extra. */
                 return basePrice - diff;
@@ -1745,12 +1751,12 @@ impl<T: Trait> Module<T> {
         desired: Vec<u8>,
         mask: Vec<u8>,
     ) -> Result<(), Error<T>> {
-        ensure!(array.length == desired.length, Error::<T>::OrderIdMissing);
-        ensure!(array.length == mask.length, Error::<T>::OrderIdMissing);
+        ensure!(array.len() == desired.len(), Error::<T>::OrderIdMissing);
+        ensure!(array.len() == mask.len(), Error::<T>::OrderIdMissing);
 
         for (i, &item) in array.iter().enumerate() {
             /* Conceptually: array[i] = (!mask[i] && array[i]) || (mask[i] && desired[i]), bitwise in word chunks. */
-            array[i] = (!mask[i] & array[i]) || (mask[i] & desired[i]);
+            array[i] = (!mask[i] & array[i]) | (mask[i] & desired[i]) ;
         }
         Ok(())
     }
@@ -1772,13 +1778,13 @@ impl<T: Trait> Module<T> {
         a == b
     }
 
-pub fn buildOrderType(index: u64,
+pub fn buildOrderType(
 
-    exchange: Address,
-    /* OrderType maker Address. */
-    maker: Address,
-    /* OrderType taker Address, if specified. */
-    taker: Address,
+    exchange: AccountId,
+    /* OrderType maker AccountId. */
+    maker: AccountId,
+    /* OrderType taker AccountId, if specified. */
+    taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
     makerRelayerFee: u64,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
@@ -1787,8 +1793,8 @@ pub fn buildOrderType(index: u64,
     makerProtocolFee: u64,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
     takerProtocolFee: u64,
-    /* OrderType fee recipient or zero Address for taker order. */
-    feeRecipient: Address,
+    /* OrderType fee recipient or zero AccountId for taker order. */
+    feeRecipient: AccountId,
     /* Fee method (protocol token or split fee). */
     feeMethod: FeeMethod,
     /* Side (buy/sell). */
@@ -1796,19 +1802,19 @@ pub fn buildOrderType(index: u64,
     /* Kind of sale. */
     saleKind: SaleKind,
     /* Target. */
-    target: Address,
+    target: AccountId,
     /* Vec<u8>. */
-    howToCall: Vec<u8>,
+    howToCall: HowToCall,
     /* Calldata. */
     calldata: Bytes,
     /* Calldata replacement pattern, or an empty byte array for no replacement. */
     replacementPattern: Bytes,
-    /* Static call target, zero-Address for no static call. */
-    staticTarget: Address,
+    /* Static call target, zero-AccountId for no static call. */
+    staticTarget: AccountId,
     /* Static call extra data. */
     staticExtradata: Bytes,
-    /* Token used to pay for the order, or the zero-Address as a sentinel value for Ether. */
-    paymentToken: Address,
+    /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
+    paymentToken: AccountId,
     /* Base price of the order (in paymentTokens). */
     basePrice: u64,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
@@ -1818,13 +1824,13 @@ pub fn buildOrderType(index: u64,
     /* Expiration timestamp - 0 for no expiry. */
     expirationTime: u64,
     /* OrderType salt, used to prevent duplicate hashes. */
-    salt: u64) -> OrderType<AccountId, Moment> {
-        OrderType::<AccountId,Moment> {
-    index,
+    salt: u64) -> OrderType<T::AccountId, T::Moment> {
+        OrderType::<T::AccountId,T::Moment> {
+    index:0,
     exchange,
-    /* OrderType maker Address. */
+    /* OrderType maker AccountId. */
     maker,
-    /* OrderType taker Address, if specified. */
+    /* OrderType taker AccountId, if specified. */
     taker,
     /* Maker relayer fee of the order, unused for taker order. */
     makerRelayerFee,
@@ -1834,7 +1840,7 @@ pub fn buildOrderType(index: u64,
     makerProtocolFee,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
     takerProtocolFee,
-    /* OrderType fee recipient or zero Address for taker order. */
+    /* OrderType fee recipient or zero AccountId for taker order. */
     feeRecipient,
     /* Fee method (protocol token or split fee). */
     feeMethod,
@@ -1850,11 +1856,11 @@ pub fn buildOrderType(index: u64,
     calldata,
     /* Calldata replacement pattern, or an empty byte array for no replacement. */
     replacementPattern,
-    /* Static call target, zero-Address for no static call. */
+    /* Static call target, zero-AccountId for no static call. */
     staticTarget,
     /* Static call extra data. */
     staticExtradata,
-    /* Token used to pay for the order, or the zero-Address as a sentinel value for Ether. */
+    /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     paymentToken,
     /* Base price of the order (in paymentTokens). */
     basePrice,
@@ -1865,7 +1871,8 @@ pub fn buildOrderType(index: u64,
     /* Expiration timestamp - 0 for no expiry. */
     expirationTime,
     /* OrderType salt, used to prevent duplicate hashes. */
-    salt
+    salt,
+registered: <timestamp::Module<T>>::now(),
 }
 }
 
@@ -1875,7 +1882,7 @@ pub fn buildOrderType(index: u64,
 
 
 // #[derive(Default)]
-// pub struct OrderTypeBuilder<AccountId, Moment>
+// pub struct OrderTypeBuilder<T::AccountId, Moment>
 // where
 //     AccountId: Default,
 //     Moment: Default,
@@ -1917,7 +1924,7 @@ pub fn buildOrderType(index: u64,
 //         self
 //     }
 
-//     pub fn build(self) -> OrderType<AccountId, Moment> {
+//     pub fn build(self) -> OrderType<T::AccountId, Moment> {
 //         OrderType::<AccountId, Moment> {
 //             index: self.index,
 //             id: self.id,
@@ -1927,15 +1934,15 @@ pub fn buildOrderType(index: u64,
 //         }
 //     }
 
-//     pub fn build() -> OrderType<AccountId, Moment> {
-//         OrderType<AccountId, Moment> {
+//     pub fn build() -> OrderType<T::AccountId, Moment> {
+//         OrderType<T::AccountId, Moment> {
 //     index: u64,
 
-//     exchange: Address,
-//     /* OrderType maker Address. */
-//     maker: Address,
-//     /* OrderType taker Address, if specified. */
-//     taker: Address,
+//     exchange: AccountId,
+//     /* OrderType maker AccountId. */
+//     maker: AccountId,
+//     /* OrderType taker AccountId, if specified. */
+//     taker: AccountId,
 //     /* Maker relayer fee of the order, unused for taker order. */
 //     makerRelayerFee: u64,
 //     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
@@ -1944,8 +1951,8 @@ pub fn buildOrderType(index: u64,
 //     makerProtocolFee: u64,
 //     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
 //     takerProtocolFee: u64,
-//     /* OrderType fee recipient or zero Address for taker order. */
-//     feeRecipient: Address,
+//     /* OrderType fee recipient or zero AccountId for taker order. */
+//     feeRecipient: AccountId,
 //     /* Fee method (protocol token or split fee). */
 //     feeMethod: FeeMethod,
 //     /* Side (buy/sell). */
@@ -1953,19 +1960,19 @@ pub fn buildOrderType(index: u64,
 //     /* Kind of sale. */
 //     saleKind: SaleKind,
 //     /* Target. */
-//     target: Address,
+//     target: AccountId,
 //     /* Vec<u8>. */
-//     howToCall: Vec<u8>,
+//     howToCall: HowToCall,
 //     /* Calldata. */
 //     calldata: Bytes,
 //     /* Calldata replacement pattern, or an empty byte array for no replacement. */
 //     replacementPattern: Bytes,
-//     /* Static call target, zero-Address for no static call. */
-//     staticTarget: Address,
+//     /* Static call target, zero-AccountId for no static call. */
+//     staticTarget: AccountId,
 //     /* Static call extra data. */
 //     staticExtradata: Bytes,
-//     /* Token used to pay for the order, or the zero-Address as a sentinel value for Ether. */
-//     paymentToken: Address,
+//     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
+//     paymentToken: AccountId,
 //     /* Base price of the order (in paymentTokens). */
 //     basePrice: u64,
 //     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
