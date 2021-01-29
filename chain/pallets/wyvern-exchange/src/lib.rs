@@ -330,7 +330,7 @@ decl_event!(
         ),
       OrderApprovedPartTwo(
             Vec<u8>,
-            Vec<u8>,
+            HowToCall,
             Vec<u8>,
             Vec<u8>,
             AccountId,
@@ -511,7 +511,7 @@ impl<T: Trait> Module<T> {
         replacementPattern: Vec<u8>,
         staticExtradata: Vec<u8>,
     ) -> Vec<u8> {
-      Self::hashToSign(Self::buildOrderType(
+      Self::hashToSign(&Self::buildOrderType(
             addrs[0],
             addrs[1],
             addrs[2],
@@ -626,7 +626,7 @@ impl<T: Trait> Module<T> {
     /**
      * @dev Call approveOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
-    fn approveOrder_(origin:AccountId,
+    pub fn approveOrder_(origin:T::Origin,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
@@ -670,7 +670,7 @@ impl<T: Trait> Module<T> {
     /**
      * @dev Call cancelOrder - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
-    fn cancelOrder_(origin:AccountId,
+    fn cancelOrder_(origin:T::Origin,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethod: FeeMethod,
@@ -915,7 +915,7 @@ impl<T: Trait> Module<T> {
     /**
      * @dev Call atomicMatch - Solidity ABI encoding workaround:limitation, hopefully temporary.
      */
-    fn atomicMatch_(
+    fn atomicMatch_(origin:T::Origin,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
         feeMethodsSidesKindsHowToCalls: Vec<u8>,
@@ -1172,11 +1172,11 @@ impl<T: Trait> Module<T> {
      * @param order OrderType to approve
      * @param orderbookInclusionDesired Whether orderbook providers should include the order in their orderbooks
      */
-    fn approveOrder(origin:AccountId,order: &OrderType<T::AccountId, T::Moment>, orderbookInclusionDesired: bool) {
+    fn approveOrder(origin:T::Origin,order: &OrderType<T::AccountId, T::Moment>, orderbookInclusionDesired: bool) {
         /* CHECKS */
-
+        let user = ensure_signed(origin)?;
         /* Assert sender is authorized to approve order. */
-        ensure!(origin == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(  user == order.maker, Error::<T>::OrderIdMissing);
 
         /* Calculate order hash. */
         let hash: Vec<u8> = Self::hashToSign(&order);
@@ -1231,14 +1231,14 @@ impl<T: Trait> Module<T> {
      * @param order OrderType to cancel
      * @param sig ECDSA signature
      */
-    fn cancelOrder(origin:AccountId,order: &OrderType<T::AccountId, T::Moment>, sig: &Signature) -> Result<(), Error<T>> {
+    fn cancelOrder(origin:T::Origin,order: &OrderType<T::AccountId, T::Moment>, sig: &Signature) -> Result<(), Error<T>> {
         /* CHECKS */
-
+let user = ensure_signed(origin)?;
         /* Calculate order hash. */
         let hash: Vec<u8> = Self::requireValidOrder(order, sig);
 
         /* Assert sender is authorized to cancel order. */
-        ensure!(origin == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(user == order.maker, Error::<T>::OrderIdMissing);
 
         /* EFFECTS */
 
