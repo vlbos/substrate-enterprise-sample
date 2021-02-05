@@ -6,10 +6,12 @@ use codec::{Decode, Encode};
 use core::result::Result;
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage,  ensure, 
-sp_runtime::{RuntimeDebug,MultiSignature,traits::{IdentifyAccount, Member, Verify}},
-traits::{Currency, Get, LockableCurrency, Randomness, ReservableCurrency},sp_io::hashing::keccak_256,
+sp_runtime::{RuntimeDebug,MultiSignature,traits::{Hash,Saturating, Dispatchable, DispatchInfoOf, PostDispatchInfoOf, SignedExtension, Zero, SaturatedConversion,IdentifyAccount, Member, Verify}},
+traits::{Currency, Get, LockableCurrency, Randomness, ReservableCurrency,ExistenceRequirement::AllowDeath},sp_io::hashing::keccak_256,
     dispatch::{DispatchError, DispatchResult},sp_std::collections::btree_set::BTreeSet, sp_std::prelude::*
 };
+
+
 // use sp_runtime::{generic, MultiSignature, traits::{Verify, BlakeTwo256, IdentifyAccount}};
 
 // traits::EnsureOrigin,
@@ -34,9 +36,11 @@ pub const ORDER_FIELD_NAME_MAX_LENGTH: usize = 10;
 pub const ORDER_FIELD_VALUE_MAX_LENGTH: usize = 20;
 pub const ORDER_MAX_FIELDS: usize = 3;
 // /* Inverse basis point. */
-pub const INVERSE_BASIS_POINT: u64 = 10000;
+
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+
+pub const INVERSE_BASIS_POINT: u32= 10000;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -188,7 +192,7 @@ impl From<u8> for Side {
 // to be shared with other network participants, and remains largely static.
 // It can also be used for instance-level (lot) master data.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
-pub struct OrderType<AccountId, Moment> {
+pub struct OrderType<AccountId, Moment,Balance> {
       // /* An order on the exchange. */
     pub index: u64,
     /* Exchange AccountId, intended as a versioning mechanism. */
@@ -198,13 +202,13 @@ pub struct OrderType<AccountId, Moment> {
     /* OrderType taker AccountId, if specified. */
     pub taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
-    pub maker_relayer_fee: u64,
+    pub maker_relayer_fee: Balance,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
-    pub taker_relayer_fee: u64,
+    pub taker_relayer_fee: Balance,
     /* Maker protocol fee of the order, unused for taker order. */
-    pub maker_protocol_fee: u64,
+    pub maker_protocol_fee: Balance,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
-    pub taker_protocol_fee: u64,
+    pub taker_protocol_fee: Balance,
     /* OrderType fee recipient or zero AccountId for taker order. */
     pub fee_recipient: AccountId,
     /* Fee method (protocol token or split fee). */
@@ -228,15 +232,15 @@ pub struct OrderType<AccountId, Moment> {
     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     pub payment_token: AccountId,
     /* Base price of the order (in paymentTokens). */
-    pub base_price: u64,
+    pub base_price: Balance,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
-    pub extra: u64,
+    pub extra: Balance,
     /* Listing timestamp. */
-    pub listing_time: u64,
+    pub listing_time: Moment,
     /* Expiration timestamp - 0 for no expiry. */
-    pub expiration_time: u64,
+    pub expiration_time: Moment,
     /* OrderType salt, used to prevent duplicate hashes. */
-    pub salt: u64,
+    pub salt:frame_support::sp_runtime::traits::Hash::Output,
     pub registered: Moment,
 }
 
@@ -259,11 +263,13 @@ pub trait Trait: system::Trait + timestamp::Trait {
     type Currency: ReservableCurrency<Self::AccountId>
         + LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
     // type CreateRoleOrigin: EnsureOrigin<Self::Origin>;
+    type Balance;
+    type Hash = frame_support::sp_runtime::traits::Hash;
 }
 
 decl_storage! {
     trait Store for Module<T: Trait> as OrderRegistry {
-        NextOrderIndex: u64;
+        NextOrderIndex: BalanceOf<T>;
 pub ContractSelf:T::AccountId;
  // /* The token used to pay exchange fees. */
     // ERC20 public ExchangeToken;
@@ -281,11 +287,11 @@ pub TokenTransferProxy:T::AccountId;
     // mapping(Vec<u8> => bool) public ApprovedOrders;
   pub ApprovedOrders get(fn approved_orders): map hasher(blake2_128_concat) Vec<u8> => bool;
     // /* For split fee orders, minimum required protocol maker fee, in basis points. Paid to owner (who can change it). */
-    // u64 public MinimumMakerProtocolFee = 0;
-pub MinimumMakerProtocolFee:u64;
+    // BalanceOf<T> public MinimumMakerProtocolFee = 0;
+pub MinimumMakerProtocolFee:BalanceOf<T>;
     // /* For split fee orders, minimum required protocol taker fee, in basis points. Paid to owner (who can change it). */
-    // u64 public MinimumTakerProtocolFee = 0;
-pub MinimumTakerProtocolFee:u64;
+    // BalanceOf<T> public MinimumTakerProtocolFee = 0;
+pub MinimumTakerProtocolFee:BalanceOf<T>;
     // /* Recipient of protocol fees. */
     // AccountId public ProtocolFeeRecipient;
 pub ProtocolFeeRecipient:T::AccountId;
@@ -298,24 +304,27 @@ decl_event!(
     pub enum Event<T>
     where
         AccountId = <T as system::Trait>::AccountId,
+        Balance = BalanceOf<T>,
+        Hash=frame_support::sp_runtime::traits::Hash,
+        Moment = <T as timestamp::Trait>::Moment,
     {
         // event OrderApprovedPartOne    (Vec<u8> indexed hash, AccountId exchange, AccountId indexed maker, AccountId taker,
-        // u64 maker_relayer_fee, u64 taker_relayer_fee, u64 maker_protocol_fee, u64 taker_protocol_fee,
+        // BalanceOf<T> maker_relayer_fee, BalanceOf<T> taker_relayer_fee, BalanceOf<T> maker_protocol_fee, BalanceOf<T> taker_protocol_fee,
         // AccountId indexed fee_recipient, FeeMethod fee_method, SaleKindInterface.Side side, SaleKindInterface.SaleKind sale_kind, AccountId target);
         // event OrderApprovedPartTwo    (Vec<u8> indexed hash, AuthenticatedProxy.Vec<u8> how_to_call, Vec<u8> calldata, Vec<u8> replacement_pattern,
-        // AccountId static_target, Vec<u8> static_extradata, AccountId payment_token, u64 base_price,
-        // u64 extra, u64 listing_time, u64 expiration_time, u64 salt, bool orderbook_inclusion_desired);
+        // AccountId static_target, Vec<u8> static_extradata, AccountId payment_token, BalanceOf<T> base_price,
+        // BalanceOf<T> extra, BalanceOf<T> listing_time, BalanceOf<T> expiration_time, BalanceOf<T> salt, bool orderbook_inclusion_desired);
         // event OrderCancelled          (Vec<u8> indexed hash);
-        // event OrdersMatched           (Vec<u8> buy_hash, Vec<u8> sell_hash, AccountId indexed maker, AccountId indexed taker, u64 price, Vec<u8> indexed metadata);
+        // event OrdersMatched           (Vec<u8> buy_hash, Vec<u8> sell_hash, AccountId indexed maker, AccountId indexed taker, BalanceOf<T> price, Vec<u8> indexed metadata);
       OrderApprovedPartOne(
             Vec<u8>,
             AccountId,
             AccountId,
             AccountId,
-            u64,
-            u64,
-            u64,
-            u64,
+            Balance,
+            Balance,
+            Balance,
+            Balance,
             AccountId,
             FeeMethod,
             Side,
@@ -330,15 +339,15 @@ decl_event!(
             AccountId,
             Vec<u8>,
             AccountId,
-            u64,
-            u64,
-            u64,
-            u64,
-            u64,
+            Balance,
+            Balance,
+            Moment,
+            Moment,
+            Hash::Output,
             bool,
         ),
       OrderCancelled(Vec<u8>),
-      OrdersMatched(Vec<u8>, Vec<u8>, AccountId, AccountId, u64, Vec<u8>),
+      OrdersMatched(Vec<u8>, Vec<u8>, AccountId, AccountId, Balance, Vec<u8>),
     }
 );
 
@@ -358,71 +367,6 @@ decl_module! {
         type Error = Error<T>;
         fn deposit_event() = default;
 
-//         #[weight = 10_000]
-//         pub fn post_order(origin, id: OrderId, owner: T::AccountId, fields: Option<Vec<OrderField>>) -> dispatch::DispatchResult {
-//             // T::CreateRoleOrigin::ensure_origin(&origin)?;
-//             let who = ensure_signed(origin)?;
-
-//             // Validate order ID
-//             Self::validate_order_id(&id)?;
-
-//             // Validate order fields
-//             Self::validate_order_fields(&fields)?;
-
-//             // Check order doesn't exist yet (1 DB read)
-//             Self::validate_new_order(&id)?;
-
-
-
-//             // TODO: if organization has an attribute w/ GS1 Company prefix,
-//             //       additional validation could be applied to the order ID
-//             //       to ensure its validity (same company prefix as org).
-
-//             // Generate next collection ID
-//             let next_id = NextOrderIndex::get()
-//                 .checked_add(1)
-//                 .expect("order id error");
-
-//             NextOrderIndex::put(next_id);
-
-// if let Some(fields) = &fields {
-//             for field in fields {
-//             let mut index_arr: Vec<u64> = Vec::new();
-
-//             if <OrdersOfOrganization>::contains_key(field.name(),field.value())
-//             {
-//                 index_arr = <OrdersOfOrganization>::get(field.name(),field.value());
-//                 ensure!(!index_arr.contains(&next_id), "Account already has admin role");
-//             }
-
-//             index_arr.push(next_id);
-//             <OrdersOfOrganization>::insert(field.name(),field.value(), index_arr);
-
-//     //   <OrdersOfOrganization<T>>::append(&field, &next_id);
-//             }
-//    }
-
-
-//             // Create a order instance
-//             let order = Self::new_order()
-//                 .identified_by(&id)
-//                 .owned_by(&owner)
-//                 .registered_on(<timestamp::Module<T>>::now())
-//                 .with_fields(fields)
-//                 .build();
-
-//             // Add order & ownerOf (3 DB writes)
-//             <Orders<T>>::insert(next_id, order);
-//             <Orderi>::insert(&id, next_id);
-//             // <OrdersOfOrganization<T>>::append(&owner, &id);
-
-
-//                <OwnerOf<T>>::insert(&id, &owner);
-
-//             Self::deposit_event(RawEvent::OrderPosted(who, id, owner));
-
-//             Ok(())
-//         }
  }
 }
 
@@ -439,11 +383,11 @@ impl<T: Trait> Module<T> {
 pub fn calculate_final_price_ex(
         side: Side,
         sale_kind: SaleKind,
-        base_price: u64,
-        extra: u64,
-        listing_time: u64,
-        expiration_time: u64,
-    ) -> u64 {
+        base_price: BalanceOf<T>,
+        extra: BalanceOf<T>,
+        listing_time: T::Moment,
+        expiration_time: T::Moment,
+    ) -> BalanceOf<T> {
       Self::calculate_final_price(
             &side,
             &sale_kind,
@@ -459,7 +403,7 @@ pub fn calculate_final_price_ex(
      */
 pub fn hash_order_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -486,7 +430,7 @@ pub fn hash_order_ex(
      */
 pub fn hash_to_sign_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -513,7 +457,7 @@ pub fn hash_to_sign_ex(
      */
 pub fn validate_order_parameters_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -522,7 +466,7 @@ pub fn validate_order_parameters_ex(
         replacement_pattern: &[u8],
         static_extradata: &[u8],
     ) -> bool {
-        let order: OrderType<T::AccountId,T::Moment> = Self::build_order_type_arr(
+        let order: OrderType<T::AccountId,T::Moment,T::Balance> = Self::build_order_type_arr(
           addrs,
         uints,
         fee_method,
@@ -541,7 +485,7 @@ pub fn validate_order_parameters_ex(
      */
 pub fn validate_order_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -551,7 +495,7 @@ pub fn validate_order_ex(
         static_extradata: &[u8],
         sig: T::Signature,
     ) -> bool {
-        let order: OrderType<T::AccountId,T::Moment> = Self::build_order_type_arr(
+        let order: OrderType<T::AccountId,T::Moment,T::Balance> = Self::build_order_type_arr(
           addrs,
         uints,
         fee_method,
@@ -570,7 +514,7 @@ pub fn validate_order_ex(
      */
     pub fn approve_order_ex(origin:T::Origin,
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -580,7 +524,7 @@ pub fn validate_order_ex(
         static_extradata: &[u8],
         orderbook_inclusion_desired: bool,
     ) -> DispatchResult {
-       let  order: OrderType<T::AccountId,T::Moment> = Self::build_order_type_arr(
+       let  order: OrderType<T::AccountId,T::Moment,T::Balance> = Self::build_order_type_arr(
           addrs,
         uints,
         fee_method,
@@ -599,7 +543,7 @@ pub fn validate_order_ex(
      */
 pub fn cancel_order_ex(origin:T::Origin,
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -631,7 +575,7 @@ pub fn cancel_order_ex(origin:T::Origin,
      */
 pub fn calculate_current_price_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -639,7 +583,7 @@ pub fn calculate_current_price_ex(
         calldata: &[u8],
         replacement_pattern: &[u8],
         static_extradata: &[u8],
-    ) -> u64 {
+    ) -> BalanceOf<T> {
       Self::calculate_current_price(&Self::build_order_type_arr(
           addrs,
         uints,
@@ -658,7 +602,7 @@ pub fn calculate_current_price_ex(
      */
 pub fn orders_can_match_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_methods_sides_kinds_how_to_calls: &[u8],
         calldata_buy: &[u8],
         calldata_sell: &[u8],
@@ -712,7 +656,7 @@ let _r = Self::guarded_array_replace(&mut tmpsell_calldata, &buy_calldata, sell_
      */
     pub fn calculate_match_price_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_methods_sides_kinds_how_to_calls: &[u8],
         calldata_buy: &[u8],
         calldata_sell: &[u8],
@@ -720,7 +664,7 @@ let _r = Self::guarded_array_replace(&mut tmpsell_calldata, &buy_calldata, sell_
         replacement_pattern_sell: &[u8],
         static_extradata_buy: &[u8],
         static_extradata_sell: &[u8],
-    ) -> Result<u64,Error<T>> {
+    ) -> Result<BalanceOf<T>,Error<T>> {
 let bs = Self::build_order_type_arr2(addrs,
         uints,
         fee_methods_sides_kinds_how_to_calls,
@@ -738,7 +682,7 @@ let bs = Self::build_order_type_arr2(addrs,
      */
     pub fn atomic_match_ex(origin:T::Origin,
         addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_methods_sides_kinds_how_to_calls: &[u8],
         calldata_buy: &[u8],
         calldata_sell: &[u8],
@@ -762,7 +706,7 @@ let bs = Self::build_order_type_arr2(addrs,
         static_extradata_sell);
  Self::atomic_match(
             user,
-            0,
+            Zero::zero(),
             bs[0].clone(),
             sig[0].clone(),
             bs[1].clone(),
@@ -777,7 +721,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @dev Change the minimum maker fee paid to the protocol (only:owner)
      * @param newMinimumMakerProtocolFee New fee to set in basis points
      */
-    pub fn change_minimum_maker_protocol_fee(new_minimum_maker_protocol_fee: u64) -> Result<(), Error<T>>
+    pub fn change_minimum_maker_protocol_fee(new_minimum_maker_protocol_fee: BalanceOf<T>) -> Result<(), Error<T>>
 // onlyOwner
     {
         MinimumMakerProtocolFee::put(new_minimum_maker_protocol_fee);
@@ -788,7 +732,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @dev Change the minimum taker fee paid to the protocol (only:owner)
      * @param new_minimum_taker_protocol_fee New fee to set in basis points
      */
-    pub fn change_minimum_taker_protocol_fee(new_minimum_taker_protocol_fee: u64) -> Result<(), Error<T>> {
+    pub fn change_minimum_taker_protocol_fee(new_minimum_taker_protocol_fee: BalanceOf<T>) -> Result<(), Error<T>> {
         // onlyOwner
         MinimumTakerProtocolFee::put(new_minimum_taker_protocol_fee);
         Ok(())
@@ -815,23 +759,64 @@ let bs = Self::build_order_type_arr2(addrs,
         _token: &T::AccountId,
         _from: &T::AccountId,
         _to: &T::AccountId,
-        _amount: u64,
+        _amount: BalanceOf<T>,
     ) -> Result<(), Error<T>> {
-        if _amount > 0 {
+        if _amount > Zero::zero() {
             // ensure!(TokenTransferProxy.transferFrom(token, from, to, amount), Error::<T>::OrderIdMissing);
-            // let call = Box::new(Call::Balances(BalancesCall::transfer(6, 1)));
-            // ensure!(Proxy::proxy(Origin::signed(2), 1, None, &call), Error::<T>::OrderIdMissing);
-        }
+            	// let _a = _amount as u128;
+// let balance_amount = BalanceOf::<T>::zero();// _a.try_into().map_err(|_| ());
+				// T::Currency::transfer(&_from, &_to, balance_amount, ExistenceRequirement::AllowDeath);
+       }
         Ok(())
     }
 
+  pub fn transfer_tokens_balance(
+        _from: &T::AccountId,
+        _to: &T::AccountId,
+        _amount: BalanceOf::<T>,
+    ) -> Result<(), Error<T>> {
+        // if _amount > 0 {
+            // ensure!(TokenTransferProxy.transferFrom(token, from, to, amount), Error::<T>::OrderIdMissing);
+            	// let _a = _amount as u128;
+// let balance_amount = BalanceOf::<T>::zero();// _a.try_into().map_err(|_| ());
+				let _ = T::Currency::transfer(&_from, &_to, _amount, frame_support::traits::ExistenceRequirement::AllowDeath);
+    //    }
+        Ok(())
+    }
+
+pub fn u32_to_balance(_input: BalanceOf<T>)  {
+let my_u32:u32 = 0;
+ let _my_balance: BalanceOf<T> = my_u32.into();
+ let _my_balance1: BalanceOf<T> = my_u32.into();
+let _a = _my_balance-_my_balance1;
+let _s = _my_balance*_my_balance1;
+// let _my:u32 = _my_balance1.try_into<u32>();
+let _mm :T::Moment = T::Moment::from(3);//T::Moment::get();
+let _mm1 :T::Moment = T::Moment::from(3);//T::Moment::get();
+let _mm :T::Moment = _mm+_mm1;//T::Moment::get();
+let _mm :T::Moment = Zero::zero();//T::Moment::get();
+ let _my_balance: BalanceOf<T> = Zero::zero();
+// let _m :u32 = _mm.try_into();
+}
+
+pub fn u64_to_balance(_input: BalanceOf<T>) -> Option<BalanceOf<T>> {
+let my_u32:u32 = _input as u32;
+ Some(my_u32.into())
+//    BalanceOf::<T>::try_from(_input as u32)//.try_into().ok()
+}
+
+pub fn u64_to_balance_saturated(_input: BalanceOf<T>) -> BalanceOf<T> {
+let my_u32:u32 = _input as u32;
+ my_u32.into()
+    // BalanceOf::<T>::saturated_from(_input as u32) //.saturated_into()
+}
     /**
      * @dev Charge a fee in protocol tokens
      * @param from AccountId to charge fees
      * @param to AccountId to receive fees
      * @param amount Amount of protocol tokens to charge
      */
-    pub fn charge_protocol_fee(from: &T::AccountId, to: &T::AccountId, amount: u64) -> Result<(), Error<T>> {
+    pub fn charge_protocol_fee(from: &T::AccountId, to: &T::AccountId, amount: BalanceOf<T>) -> Result<(), Error<T>> {
       Self::transfer_tokens(&ExchangeToken::<T>::get(), &from, &to, amount)
     }
 
@@ -840,7 +825,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @param order OrderType to hash
      * @return Hash of order
      */
-    pub fn hash_order(order: &OrderType<T::AccountId, T::Moment>) -> Vec<u8> {
+    pub fn hash_order(order: &OrderType<T::AccountId,T::Moment,T::Balance>) -> Vec<u8> {
         // hash := keccak256(add(array, 0x20), size)
         //    sp_io::hashing::blake2_256(&h).into()
         keccak_256(&order.encode()).into()
@@ -854,7 +839,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @param order OrderType to hash
      * @return Hash of message prefix and order hash per Ethereum format
      */
-    pub fn hash_to_sign(order: &OrderType<T::AccountId, T::Moment>) -> Vec<u8> {
+    pub fn hash_to_sign(order: &OrderType<T::AccountId,T::Moment,T::Balance>) -> Vec<u8> {
         keccak_256(&Self::hash_order(&order)).to_vec()
     }
 
@@ -863,7 +848,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @param order OrderType to validate
      * @param sig ECDSA signature
      */
-    pub fn require_valid_order(order: &OrderType<T::AccountId, T::Moment>, sig: &T::Signature) -> Result<Vec<u8>,Error<T>> {
+    pub fn require_valid_order(order: &OrderType<T::AccountId,T::Moment,T::Balance>, sig: &T::Signature) -> Result<Vec<u8>,Error<T>> {
         let hash: Vec<u8> = Self::hash_to_sign(&order);
         ensure!(Self::validate_order(&hash, order, sig), Error::<T>::OrderIdMissing);
         Ok(hash)
@@ -873,12 +858,12 @@ let bs = Self::build_order_type_arr2(addrs,
      * @dev Validate order parameters (does *not* check validity:signature)
      * @param order OrderType to validate
      */
-    pub fn validate_order_parameters(order: &OrderType<T::AccountId, T::Moment>) -> bool {
+    pub fn validate_order_parameters(order: &OrderType<T::AccountId,T::Moment,T::Balance>) -> bool {
         /* OrderType must be targeted at this protocol version (this contract:Exchange). */
         //TODO
-        // if order.exchange != 0 {
-        //     return false;
-        // }
+        if order.exchange != ContractSelf::<T>::get() {
+            return false;
+        }
 
         /* OrderType must possess valid sale kind parameter combination. */
         if !Self::validate_parameters(&order.sale_kind, order.expiration_time) {
@@ -902,7 +887,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @param order OrderType to validate
      * @param sig ECDSA signature
      */
-    pub fn validate_order(hash: &[u8], order: &OrderType<T::AccountId, T::Moment>, sig: &T::Signature) -> bool {
+    pub fn validate_order(hash: &[u8], order: &OrderType<T::AccountId,T::Moment,T::Balance>, sig: &T::Signature) -> bool {
         /* Not done in an if-conditional to prevent unnecessary ecrecover evaluation, which seems to happen even though it should short-circuit. */
 
         /* OrderType must have valid parameters. */
@@ -955,7 +940,7 @@ let bs = Self::build_order_type_arr2(addrs,
      * @param order OrderType to approve
      * @param orderbook_inclusion_desired Whether orderbook providers should include the order in their orderbooks
      */
-    pub fn approve_order(origin:T::Origin,order: &OrderType<T::AccountId, T::Moment>, orderbook_inclusion_desired: bool)->DispatchResult {
+    pub fn approve_order(origin:T::Origin,order: &OrderType<T::AccountId,T::Moment,T::Balance>, orderbook_inclusion_desired: bool)->DispatchResult {
         /* CHECKS */
         let user = ensure_signed(origin)?;
         /* Assert sender is authorized to approve order. */
@@ -1015,7 +1000,7 @@ Ok(())
      * @param order OrderType to cancel
      * @param sig ECDSA signature
      */
-    pub fn cancel_order(origin:T::Origin,order: &OrderType<T::AccountId, T::Moment>, sig: &T::Signature) -> DispatchResult {
+    pub fn cancel_order(origin:T::Origin,order: &OrderType<T::AccountId,T::Moment,T::Balance>, sig: &T::Signature) -> DispatchResult {
         /* CHECKS */
 let user = ensure_signed(origin)?;
        
@@ -1041,7 +1026,7 @@ let user = ensure_signed(origin)?;
      * @param order OrderType to calculate the price of
      * @return The current price of the order
      */
-  pub fn calculate_current_price(order: &OrderType<T::AccountId, T::Moment>) -> u64 {
+  pub fn calculate_current_price(order: &OrderType<T::AccountId,T::Moment,T::Balance>) -> BalanceOf<T> {
         Self::calculate_final_price(
             &order.side,
             &order.sale_kind,
@@ -1058,9 +1043,9 @@ let user = ensure_signed(origin)?;
      * @param sell Sell-side order
      * @return Match price
      */
-  pub fn calculate_match_price(buy: &OrderType<T::AccountId,T::Moment>, sell: &OrderType<T::AccountId,T::Moment>) -> Result<u64,Error<T>> {
+  pub fn calculate_match_price(buy: &OrderType<T::AccountId,T::Moment,T::Balance>, sell: &OrderType<T::AccountId,T::Moment,T::Balance>) -> Result<BalanceOf<T>,Error<T>> {
         /* Calculate sell price. */
-        let sell_price: u64 = Self::calculate_final_price(
+        let sell_price: BalanceOf<T> = Self::calculate_final_price(
             &sell.side,
             &sell.sale_kind,
             sell.base_price,
@@ -1070,7 +1055,7 @@ let user = ensure_signed(origin)?;
         );
 
         /* Calculate buy price. */
-       let buy_price: u64 = Self::calculate_final_price(
+       let buy_price: BalanceOf<T> = Self::calculate_final_price(
             &buy.side,
             &buy.sale_kind,
             buy.base_price,
@@ -1083,7 +1068,7 @@ let user = ensure_signed(origin)?;
         ensure!(buy_price >= sell_price, Error::<T>::OrderIdMissing);
 
         /* Maker/taker priority. */
-       let price:u64 =  if sell.fee_recipient != ContractSelf::<T>::get() {
+       let price:BalanceOf<T> =  if sell.fee_recipient != ContractSelf::<T>::get() {
             sell_price
         } else {
             buy_price
@@ -1097,26 +1082,26 @@ let user = ensure_signed(origin)?;
      * @param buy Buy-side order
      * @param sell Sell-side order
      */
-  pub fn execute_funds_transfer(msg_value: u64, buy: &OrderType<T::AccountId,T::Moment>, sell: &OrderType<T::AccountId,T::Moment>) -> Result<u64,Error<T>> {
+  pub fn execute_funds_transfer(msg_value: BalanceOf<T>, buy: &OrderType<T::AccountId,T::Moment,T::Balance>, sell: &OrderType<T::AccountId,T::Moment,T::Balance>) -> Result<BalanceOf<T>,Error<T>> {
         let originprotocol_fee_recipient = ProtocolFeeRecipient::<T>::get();
         /* Only payable in the special case of unwrapped Ether. */
         if sell.payment_token != ContractSelf::<T>::get() {
-            ensure!(msg_value == 0, Error::<T>::OrderIdMissing);
+            ensure!(msg_value == Zero::zero(), Error::<T>::OrderIdMissing);
         }
 
         /* Calculate match price. */
-       let  price: u64 = Self::calculate_match_price(&buy, &sell)?;
+       let  price: BalanceOf<T> = Self::calculate_match_price(&buy, &sell)?;
 
         /* If paying using a token (Ether:not), transfer tokens. This is done prior to fee payments to that a seller will have tokens before being charged fees. */
-        if price > 0 && sell.payment_token != ContractSelf::<T>::get() {
+        if price > Zero::zero() && sell.payment_token != ContractSelf::<T>::get() {
            Self::transfer_tokens(sell.payment_token(), &buy.maker(), sell.maker(), price)?;
         }
 
         /* Amount that will be received by seller (Ether:for). */
-        let mut receive_amount: u64 = price;
+        let mut receive_amount: BalanceOf<T> = price;
 
         /* Amount that must be sent by buyer (Ether:for). */
-        let mut required_amount: u64 = price;
+        let mut required_amount: BalanceOf<T> = price;
 
         /* Determine maker/taker and charge fees accordingly. */
         if sell.fee_recipient != ContractSelf::<T>::get() {
@@ -1137,8 +1122,8 @@ let user = ensure_signed(origin)?;
 
                 /* Maker fees are deducted from the token amount that the maker receives. Taker fees are extra tokens that must be paid by the taker. */
 
-                if sell.maker_relayer_fee > 0 {
-                    let maker_relayer_fee: u64 = sell.maker_relayer_fee * price / INVERSE_BASIS_POINT;
+                if sell.maker_relayer_fee > Zero::zero() {
+                    let maker_relayer_fee: BalanceOf<T> = sell.maker_relayer_fee * price / INVERSE_BASIS_POINT.into();
                     if sell.payment_token == ContractSelf::<T>::get() {
                         receive_amount = receive_amount - maker_relayer_fee;
                         // sell.fee_recipient.transfer(maker_relayer_fee);
@@ -1158,8 +1143,8 @@ let user = ensure_signed(origin)?;
                     }
                 }
 
-                if sell.taker_relayer_fee > 0 {
-                    let taker_relayer_fee: u64 = sell.taker_relayer_fee * price / INVERSE_BASIS_POINT;
+                if sell.taker_relayer_fee > Zero::zero() {
+                    let taker_relayer_fee: BalanceOf<T> = sell.taker_relayer_fee * price / INVERSE_BASIS_POINT.into();
                     if sell.payment_token == ContractSelf::<T>::get() {
                         required_amount = required_amount + taker_relayer_fee;
                         // sell.fee_recipient.transfer(taker_relayer_fee);
@@ -1179,8 +1164,8 @@ let user = ensure_signed(origin)?;
                     }
                 }
 
-                if sell.maker_protocol_fee > 0 {
-                    let maker_protocol_fee: u64 = sell.maker_protocol_fee * price / INVERSE_BASIS_POINT;
+                if sell.maker_protocol_fee > Zero::zero() {
+                    let maker_protocol_fee: BalanceOf<T> = sell.maker_protocol_fee * price / INVERSE_BASIS_POINT.into();
                     if sell.payment_token == ContractSelf::<T>::get() {
                         receive_amount = receive_amount - maker_protocol_fee;
                         // ProtocolFeeRecipient.transfer(maker_protocol_fee);
@@ -1200,8 +1185,8 @@ let user = ensure_signed(origin)?;
                     }
                 }
 
-                if sell.taker_protocol_fee > 0 {
-                    let taker_protocol_fee: u64 = sell.taker_protocol_fee * price / INVERSE_BASIS_POINT;
+                if sell.taker_protocol_fee > Zero::zero() {
+                    let taker_protocol_fee: BalanceOf<T> = sell.taker_protocol_fee * price / INVERSE_BASIS_POINT.into();
                     if sell.payment_token == ContractSelf::<T>::get() {
                         required_amount = required_amount + taker_protocol_fee;
                         // ProtocolFeeRecipient.transfer(taker_protocol_fee);
@@ -1246,8 +1231,8 @@ let user = ensure_signed(origin)?;
                     Error::<T>::OrderIdMissing
                 );
 
-                if buy.maker_relayer_fee > 0 {
-                   let maker_relayer_fee =buy.maker_relayer_fee * price / INVERSE_BASIS_POINT;
+                if buy.maker_relayer_fee > Zero::zero() {
+                   let maker_relayer_fee =buy.maker_relayer_fee * price / INVERSE_BASIS_POINT.into();
                   Self::transfer_tokens(
                         sell.payment_token(),
                         buy.maker(),
@@ -1256,8 +1241,8 @@ let user = ensure_signed(origin)?;
                     )?;
                 }
 
-                if buy.taker_relayer_fee > 0 {
-                   let taker_relayer_fee = buy.taker_relayer_fee * price / INVERSE_BASIS_POINT;
+                if buy.taker_relayer_fee > Zero::zero() {
+                   let taker_relayer_fee = buy.taker_relayer_fee * price / INVERSE_BASIS_POINT.into();
                   Self::transfer_tokens(
                         sell.payment_token(),
                         sell.maker(),
@@ -1266,8 +1251,8 @@ let user = ensure_signed(origin)?;
                     )?;
                 }
 
-                if buy.maker_protocol_fee > 0 {
-                   let maker_protocol_fee = buy.maker_protocol_fee * price / INVERSE_BASIS_POINT;
+                if buy.maker_protocol_fee > Zero::zero() {
+                   let maker_protocol_fee = buy.maker_protocol_fee * price / INVERSE_BASIS_POINT.into();
                   Self::transfer_tokens(
                         sell.payment_token(),
                         buy.maker(),
@@ -1276,8 +1261,8 @@ let user = ensure_signed(origin)?;
                     )?;
                 }
 
-                if buy.taker_protocol_fee > 0 {
-                    let taker_protocol_fee = buy.taker_protocol_fee * price / INVERSE_BASIS_POINT;
+                if buy.taker_protocol_fee > Zero::zero() {
+                    let taker_protocol_fee = buy.taker_protocol_fee * price / INVERSE_BASIS_POINT.into();
                   Self::transfer_tokens(
                         &sell.payment_token,
                         &sell.maker,
@@ -1300,8 +1285,8 @@ let user = ensure_signed(origin)?;
             // sell.maker.transfer(receive_amount);
           Self::transfer_tokens(&ContractSelf::<T>::get(), &ContractSelf::<T>::get(), &sell.maker, receive_amount)?;
             /* Allow overshoot for variable-price auctions, refund difference. */
-            let diff: u64 = msg_value - required_amount;
-            if diff > 0 {
+            let diff: BalanceOf<T> = msg_value - required_amount;
+            if diff > Zero::zero() {
                 // buy.maker.transfer(diff);
               Self::transfer_tokens(&ContractSelf::<T>::get(), &ContractSelf::<T>::get(), buy.maker(), diff)?;
             }
@@ -1318,7 +1303,7 @@ let user = ensure_signed(origin)?;
      * @param sell Sell-side order
      * @return Whether or not the two orders can be matched
      */
-  pub fn orders_can_match(buy: &OrderType<T::AccountId,T::Moment>, sell: &OrderType<T::AccountId,T::Moment>) -> bool {
+  pub fn orders_can_match(buy: &OrderType<T::AccountId,T::Moment,T::Balance>, sell: &OrderType<T::AccountId,T::Moment,T::Balance>) -> bool {
             //  Must be opposite-side.
             (buy.side == Side::Buy && sell.side == Side::Sell) &&
             // Must use same fee method.
@@ -1349,10 +1334,10 @@ let user = ensure_signed(origin)?;
      */
   pub fn atomic_match(
         msg_sender: T::AccountId,
-        msg_value: u64,
-        buy: OrderType<T::AccountId,T::Moment>,
+        msg_value: BalanceOf<T>,
+        buy: OrderType<T::AccountId,T::Moment,T::Balance>,
         buy_sig: T::Signature,
-        sell: OrderType<T::AccountId,T::Moment>,
+        sell: OrderType<T::AccountId,T::Moment,T::Balance>,
         sell_sig: T::Signature,
         metadata: &[u8],
     ) -> Result<(),Error<T>>
@@ -1380,7 +1365,7 @@ let user = ensure_signed(origin)?;
         ensure!(Self::orders_can_match(&buy, &sell), Error::<T>::OrderIdMissing);
 
         /* Target must exist (prevent malicious selfdestructs just prior to settlement:order). */
-        // u64 size;
+        // BalanceOf<T> size;
         // AccountId target = sell.target;
         // assembly {
         //     size := extcodesize(target)
@@ -1428,7 +1413,7 @@ let user = ensure_signed(origin)?;
         /* INTERACTIONS */
 
         /* Execute funds transfer and pay fees. */
-        let price: u64 = Self::execute_funds_transfer(msg_value, &buy, &sell)?;
+        let price: BalanceOf<T> = Self::execute_funds_transfer(msg_value, &buy, &sell)?;
 
         /* Execute specified call through proxy. */
         //TODO
@@ -1477,9 +1462,9 @@ let user = ensure_signed(origin)?;
      * @param expiration_time OrderType expiration time
      * @return Whether the parameters were valid
      */
-  pub fn validate_parameters(sale_kind: &SaleKind, expiration_time: u64) -> bool {
+  pub fn validate_parameters(sale_kind: &SaleKind, expiration_time: T::Moment) -> bool {
         /* Auctions must have a set expiration date. */
-        *sale_kind == SaleKind::FixedPrice || expiration_time > 0
+        *sale_kind == SaleKind::FixedPrice || expiration_time > Zero::zero()
     }
 
     /**
@@ -1488,9 +1473,9 @@ let user = ensure_signed(origin)?;
      * @param listing_time OrderType listing time
      * @param expiration_time OrderType expiration time
      */
-  pub fn can_settle_order(listing_time: u64, expiration_time: u64) -> bool {
-        let now:u64 =  0;//<system::Module<T>>::block_number() ;//<timestamp::Module<T>>::now();
-        (listing_time < now) && (expiration_time == 0 || now < expiration_time)
+  pub fn can_settle_order(listing_time: T::Moment, expiration_time: T::Moment) -> bool {
+        let now:BalanceOf<T> =  Zero::zero();//<system::Module<T>>::block_number() ;//<timestamp::Module<T>>::now();
+        (listing_time < now) && (expiration_time == Zero::zero() || now < expiration_time)
     }
 
     /**
@@ -1506,26 +1491,26 @@ let user = ensure_signed(origin)?;
   pub fn calculate_final_price(
         side: &Side,
         sale_kind: &SaleKind,
-        base_price: u64,
-        extra: u64,
-        listing_time: u64,
-        expiration_time: u64,
-    ) -> u64 {
+        base_price: BalanceOf<T>,
+        extra: BalanceOf<T>,
+        listing_time: T::Moment,
+        expiration_time: T::Moment,
+    ) -> BalanceOf<T> {
         if *sale_kind == SaleKind::FixedPrice {
             return base_price;
         } else if *sale_kind == SaleKind::DutchAuction {
-            let now :i64 = 0;// <system::Module<T>>::block_number();//<timestamp::Module<T>>::now() ;
+            let now :i64 = Zero::zero();// <system::Module<T>>::block_number();//<timestamp::Module<T>>::now() ;
             let diff: i64 = extra as i64 * (now - listing_time as i64) / (expiration_time as i64 - listing_time as i64);
             if *side == Side::Sell {
                 /* Sell-side - start price: base_price. End price: base_price - extra. */
-                return (base_price as i64  - diff) as u64;
+                return (base_price as i64  - diff) as BalanceOf<T>;
             } else {
                 /* Buy-side - start price: base_price. End price: base_price + extra. */
-                return base_price  + diff as u64;
+                return base_price  + diff as BalanceOf<T>;
             }
         }
 
-        0
+        Zero::zero()
     }
 
     /**
@@ -1573,14 +1558,14 @@ let user = ensure_signed(origin)?;
 
 pub fn build_order_type_arr(
  addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
         how_to_call: HowToCall,
         calldata: &[u8],
         replacement_pattern: &[u8],
-        static_extradata: &[u8],) -> OrderType<T::AccountId, T::Moment>
+        static_extradata: &[u8],) -> OrderType<T::AccountId, T::Moment,T::Balance>
 {
  Self::build_order_type(
     addrs[0].clone(),
@@ -1611,16 +1596,16 @@ pub fn build_order_type_arr(
 
 pub fn build_order_type_arr2(
    addrs: Vec<T::AccountId>,
-        uints: Vec<u64>,
+        uints: Vec<BalanceOf<T>>,
         fee_methods_sides_kinds_how_to_calls: &[u8],
         calldata_buy: &[u8],
         calldata_sell: &[u8],
         replacement_pattern_buy: &[u8],
         replacement_pattern_sell: &[u8],
         static_extradata_buy: &[u8],
-        static_extradata_sell: &[u8],) -> Vec<OrderType<T::AccountId, T::Moment>>
+        static_extradata_sell: &[u8],) -> Vec<OrderType<T::AccountId, T::Moment,T::Balance>>
 {
-        let  buy: OrderType<T::AccountId, T::Moment> = Self::build_order_type(
+        let  buy: OrderType<T::AccountId,T::Moment,T::Balance> = Self::build_order_type(
    addrs[0].clone(),
             addrs[1].clone(),
             addrs[2].clone(),
@@ -1644,7 +1629,7 @@ pub fn build_order_type_arr2(
             uints[6],
             uints[7],
             uints[8]);
- let sell: OrderType<T::AccountId, T::Moment> = Self::build_order_type(
+ let sell: OrderType<T::AccountId,T::Moment,T::Balance> = Self::build_order_type(
             addrs[7].clone(),
             addrs[8].clone(),
             addrs[9].clone(),
@@ -1678,13 +1663,13 @@ pub fn build_order_type(
     /* OrderType taker AccountId, if specified. */
     taker:T::AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
-    maker_relayer_fee: u64,
+    maker_relayer_fee: BalanceOf<T>,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
-    taker_relayer_fee: u64,
+    taker_relayer_fee: BalanceOf<T>,
     /* Maker protocol fee of the order, unused for taker order. */
-    maker_protocol_fee: u64,
+    maker_protocol_fee: BalanceOf<T>,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
-    taker_protocol_fee: u64,
+    taker_protocol_fee: BalanceOf<T>,
     /* OrderType fee recipient or zero AccountId for taker order. */
     fee_recipient:T::AccountId,
     /* Fee method (protocol token or split fee). */
@@ -1708,16 +1693,16 @@ pub fn build_order_type(
     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     payment_token:T::AccountId,
     /* Base price of the order (in paymentTokens). */
-    base_price: u64,
+    base_price: BalanceOf<T>,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
-    extra: u64,
+    extra: BalanceOf<T>,
     /* Listing timestamp. */
-    listing_time: u64,
+    listing_time: T::Moment,
     /* Expiration timestamp - 0 for no expiry. */
-    expiration_time: u64,
+    expiration_time: T::Moment,
     /* OrderType salt, used to prevent duplicate hashes. */
-    salt: u64) -> OrderType<T::AccountId, T::Moment> {
-        OrderType::<T::AccountId,T::Moment>::new(
+    salt: frame_support::sp_runtime::traits::Hash::Output) -> OrderType<T::AccountId, T::Moment,T::Balance> {
+        OrderType::<T::AccountId,T::Moment,T::Balance>::new(
   exchange,
     /* OrderType maker AccountId. */
   maker,
@@ -1771,10 +1756,11 @@ salt
 }
 
 
-impl<AccountId, Moment> OrderType<AccountId, Moment>
+impl<AccountId, Moment,Balance> OrderType<AccountId, Moment,Balance>
 where
     AccountId: Default,
     Moment: Default,
+    Balance:Default,
 {
 
 
@@ -1786,13 +1772,13 @@ pub fn new(
     /* OrderType taker AccountId, if specified. */
     taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
-    maker_relayer_fee: u64,
+    maker_relayer_fee: Balance,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
-    taker_relayer_fee: u64,
+    taker_relayer_fee: Balance,
     /* Maker protocol fee of the order, unused for taker order. */
-    maker_protocol_fee: u64,
+    maker_protocol_fee: Balance,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
-    taker_protocol_fee: u64,
+    taker_protocol_fee: Balance,
     /* OrderType fee recipient or zero AccountId for taker order. */
     fee_recipient: AccountId,
     /* Fee method (protocol token or split fee). */
@@ -1816,15 +1802,15 @@ pub fn new(
     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     payment_token: AccountId,
     /* Base price of the order (in paymentTokens). */
-    base_price: u64,
+    base_price: Balance,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
-    extra: u64,
+    extra: Balance,
     /* Listing timestamp. */
-    listing_time: u64,
+    listing_time: Moment,
     /* Expiration timestamp - 0 for no expiry. */
-    expiration_time: u64,
+    expiration_time: Moment,
     /* OrderType salt, used to prevent duplicate hashes. */
-    salt: u64) -> Self {
+    salt: frame_support::sp_runtime::traits::Hash::Output) -> Self {
         Self{
     index:0,
     exchange:exchange,
@@ -1890,10 +1876,12 @@ registered: Moment::default(),
 }
 
 #[derive(Default)]
-pub struct OrderTypeBuilder<AccountId, Moment>
+pub struct OrderTypeBuilder<AccountId, Moment,Balance>
 where
     AccountId: Default,
     Moment: Default,
+    Balance:Default,
+    
 {
 pub index: u64,
   
@@ -1905,13 +1893,13 @@ pub index: u64,
     /* OrderType taker AccountId, if specified. */
     pub taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
-    pub maker_relayer_fee: u64,
+    pub maker_relayer_fee: Balance,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
-    pub taker_relayer_fee: u64,
+    pub taker_relayer_fee: Balance,
     /* Maker protocol fee of the order, unused for taker order. */
-    pub maker_protocol_fee: u64,
+    pub maker_protocol_fee: Balance,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
-    pub taker_protocol_fee: u64,
+    pub taker_protocol_fee: Balance,
     /* OrderType fee recipient or zero AccountId for taker order. */
     pub fee_recipient: AccountId,
     /* Fee method (protocol token or split fee). */
@@ -1935,22 +1923,23 @@ pub index: u64,
     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     pub payment_token: AccountId,
     /* Base price of the order (in paymentTokens). */
-    pub base_price: u64,
+    pub base_price: Balance,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
-    pub extra: u64,
+    pub extra: Balance,
     /* Listing timestamp. */
-    pub listing_time: u64,
+    pub listing_time: Moment,
     /* Expiration timestamp - 0 for no expiry. */
-    pub expiration_time: u64,
+    pub expiration_time: Moment,
     /* OrderType salt, used to prevent duplicate hashes. */
-    pub salt: u64,
+    pub salt:frame_support::sp_runtime::traits::Hash::Output,
     pub registered: Moment,
 }
 
-impl<AccountId, Moment> OrderTypeBuilder<AccountId, Moment>
+impl<AccountId, Moment,Balance> OrderTypeBuilder<AccountId, Moment,Balance>
 where
     AccountId: Default,
     Moment: Default,
+    Balance:Default,
 {
 
 
@@ -1962,13 +1951,13 @@ pub fn new(
     /* OrderType taker AccountId, if specified. */
     taker: AccountId,
     /* Maker relayer fee of the order, unused for taker order. */
-    maker_relayer_fee: u64,
+    maker_relayer_fee: Balance,
     /* Taker relayer fee of the order, or maximum taker fee for a taker order. */
-    taker_relayer_fee: u64,
+    taker_relayer_fee: Balance,
     /* Maker protocol fee of the order, unused for taker order. */
-    maker_protocol_fee: u64,
+    maker_protocol_fee: Balance,
     /* Taker protocol fee of the order, or maximum taker fee for a taker order. */
-    taker_protocol_fee: u64,
+    taker_protocol_fee: Balance,
     /* OrderType fee recipient or zero AccountId for taker order. */
     fee_recipient: AccountId,
     /* Fee method (protocol token or split fee). */
@@ -1992,15 +1981,15 @@ pub fn new(
     /* Token used to pay for the order, or the zero-AccountId as a sentinel value for Ether. */
     payment_token: AccountId,
     /* Base price of the order (in paymentTokens). */
-    base_price: u64,
+    base_price: Balance,
     /* Auction extra parameter - minimum bid increment for English auctions, starting/ending price difference. */
-    extra: u64,
+    extra: Balance,
     /* Listing timestamp. */
-    listing_time: u64,
+    listing_time: Moment,
     /* Expiration timestamp - 0 for no expiry. */
-    expiration_time: u64,
+    expiration_time: Moment,
     /* OrderType salt, used to prevent duplicate hashes. */
-    salt: u64) -> Self{
+    salt: frame_support::sp_runtime::traits::Hash::Output) -> Self{
 Self {
     index:0,
     exchange:exchange,
@@ -2052,7 +2041,7 @@ registered: Moment::default(),
 }
 }
 
-    // pub fn index_by(mut self, index: u64) -> Self {
+    // pub fn index_by(mut self, index: BalanceOf<T>) -> Self {
     //     self.index = index;
     //     self
     // }
@@ -2077,8 +2066,8 @@ registered: Moment::default(),
     //     self
     // }
 
-    pub fn build(self) -> OrderType<AccountId, Moment> {
-           OrderType::<AccountId,Moment> {
+    pub fn build(self) -> OrderType<AccountId, Moment,Balance> {
+           OrderType::<AccountId,Moment,Balance> {
     index:self.index,
     exchange:self.exchange,
     /* OrderType maker AccountId. */

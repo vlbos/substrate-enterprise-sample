@@ -19,11 +19,18 @@ default_features = false
 package = 'pallet-timestamp'
 version = '2.0.0'
 
+# [dependencies.proxy]
+# default-features = false
+# # git = 'https://github.com/substrate-developer-hub/pallet-proxy'
+# package = 'pallet-proxy'
+# version = '2.0.1'
 
 [dependencies]
 frame-support = { default-features = false, version = '2.0.0' }
 frame-system = { default-features = false, version = '2.0.0' }
 balances = { package = 'pallet-balances', version = '2.0.0', default-features = false }
+# proxy = { package = 'pallet-proxy', version = '2.0.1', default-features = false }
+# pallet-proxy = { git = "https://github.com/paritytech/substrate", branch = "master", default-features = false }
 
 [dev-dependencies]
 sp-core = { default-features = false, version = '2.0.0' }
@@ -39,4 +46,6 @@ std = [
     'frame-system/std',
     'timestamp/std',
     'sp-std/std',
+'balances/std',
+'sp-runtime/std',
 ]
