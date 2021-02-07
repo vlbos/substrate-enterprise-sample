@@ -14,7 +14,7 @@ use sp_runtime::{
     Perbill,
 };
 
-use crate as orderbook;
+use crate as wyvern_exchange;
 
 impl_outer_origin! {
     pub enum Origin for Test {}
@@ -23,7 +23,7 @@ impl_outer_origin! {
 impl_outer_event! {
     pub enum TestEvent for Test {
         system<T>,
-        orderbook<T>,
+        wyvern_exchange<T>,
     }
 }
 
@@ -79,7 +79,7 @@ impl Trait for Test {
     // type CreateRoleOrigin = MockOrigin<Test>;
 }
 
-pub type Orderbook = Module<Test>;
+pub type WyvernExchange = Module<Test>;
 pub type System = system::Module<Test>;
 pub type Timestamp = timestamp::Module<Test>;
 
