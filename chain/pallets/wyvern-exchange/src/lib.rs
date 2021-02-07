@@ -25,7 +25,7 @@ use frame_support::{
     },
 };
 
-use sp_std::convert::{TryFrom, TryInto};
+// use sp_std::convert::{TryFrom, TryInto};
 
 // use sp_runtime::{generic, MultiSignature, traits::{Verify, BlakeTwo256, IdentifyAccount}};
 
@@ -61,7 +61,7 @@ pub type Signature = MultiSignature;
 
 // Some way of identifying an account on the chain. We intentionally make it equivalent
 // to the public key of our transaction signing scheme.
-pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+// pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 // Custom types
 // pub type AccountId =Vec<u8>;
@@ -264,9 +264,9 @@ pub struct OrderType<AccountId, Moment, Balance> {
 
 pub trait Trait: system::Trait + timestamp::Trait {
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-    type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
-    type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
-    // Currency type for this module.
+    // type Public: IdentifyAccount<AccountId = Self::AccountId> + Clone;
+    // type Signature: Verify<Signer = Self::Public> + Member + Decode + Encode;
+    // // Currency type for this module.
     type Currency: ReservableCurrency<Self::AccountId>
         + LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
     // type CreateRoleOrigin: EnsureOrigin<Self::Origin>;
@@ -389,7 +389,7 @@ decl_module! {
         static_extradata: Vec<u8>,
         orderbook_inclusion_desired: bool,
     ) -> DispatchResult {
-
+let _user = ensure_signed(origin.clone())?;
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
             uints,
@@ -419,9 +419,9 @@ decl_module! {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-        sig: T::Signature,
+        sig: Signature,
     ) -> DispatchResult {
-
+let _user = ensure_signed(origin.clone())?;
         Self::cancel_order(
             origin,
             &Self::build_order_type_arr(
@@ -454,10 +454,10 @@ decl_module! {
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-        sig: Vec<T::Signature>,
+        sig: Vec<Signature>,
         rss_metadata: Vec<u8>,
     ) -> DispatchResult {
-        let user = ensure_signed(origin)?;
+        let _user = ensure_signed(origin)?;
 
         let bs = Self::build_order_type_arr2(
             addrs,
@@ -471,7 +471,7 @@ decl_module! {
             &static_extradata_sell,
         );
         Self::atomic_match(
-            user,
+            _user,
             Zero::zero(),
             bs[0].clone(),
             sig[0].clone(),
@@ -491,10 +491,11 @@ decl_module! {
     pub fn change_minimum_maker_protocol_fee(
   origin,
         new_minimum_maker_protocol_fee: BalanceOf<T>,
-    ) -> Result<(), Error<T>>
-// onlyOwner
+    ) -> DispatchResult
     {
+// onlyOwner
 
+let _user = ensure_signed(origin)?;
         MinimumMakerProtocolFee::<T>::put(new_minimum_maker_protocol_fee);
         Ok(())
     }
@@ -507,9 +508,10 @@ decl_module! {
     pub fn change_minimum_taker_protocol_fee(
   origin,
         new_minimum_taker_protocol_fee: BalanceOf<T>,
-    ) -> Result<(), Error<T>> {
-
+    ) -> DispatchResult {
         // onlyOwner
+let _user = ensure_signed(origin)?;
+
         MinimumTakerProtocolFee::<T>::put(new_minimum_taker_protocol_fee);
         Ok(())
     }
@@ -522,9 +524,11 @@ decl_module! {
     pub fn change_protocol_fee_recipient(
   origin,
         new_protocol_fee_recipient: T::AccountId,
-    ) -> Result<(), Error<T>> {
+    ) -> DispatchResult {
 
         // onlyOwner
+let _user = ensure_signed(origin)?;
+
         ProtocolFeeRecipient::<T>::put(new_protocol_fee_recipient.clone());
         Ok(())
     }
@@ -655,7 +659,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-        sig: T::Signature,
+        sig: Signature,
     ) -> bool {
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
@@ -890,7 +894,9 @@ impl<T: Trait> Module<T> {
     // }
 
     pub fn u64_to_balance_option(input: u64) -> Option<BalanceOf<T>> {
-        input.try_into().ok()
+        // use sp_std::convert::{TryFrom, TryInto};
+        // input.try_into().ok()
+        Some(Zero::zero())
     }
 
     // Note the warning above about saturated conversions
@@ -899,12 +905,15 @@ impl<T: Trait> Module<T> {
     // }
 
     pub fn balance_to_u64(input: BalanceOf<T>) -> Option<u64> {
-        //  Some(input.saturated_into::<u64>())
-        TryInto::<u64>::try_into(input).ok()
+        // use sp_std::convert::{TryFrom, TryInto};
+        //         TryInto::<u64>::try_into(input).ok()
+
+        Some(input.saturated_into::<u64>())
     }
     pub fn moment_to_u64(input: T::Moment) -> Option<u64> {
-        //  Some(input.saturated_into::<u64>())
-        TryInto::<u64>::try_into(input).ok()
+        // use sp_std::convert::{TryFrom, TryInto};
+        //         TryInto::<u64>::try_into(input).ok()
+        Some(input.saturated_into::<u64>())
     }
 
     // Note the warning above about saturated conversions
@@ -955,7 +964,7 @@ impl<T: Trait> Module<T> {
     //
     pub fn require_valid_order(
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-        sig: &T::Signature,
+        sig: &Signature,
     ) -> Result<Vec<u8>, Error<T>> {
         let hash: Vec<u8> = Self::hash_to_sign(&order);
         ensure!(
@@ -1003,7 +1012,7 @@ impl<T: Trait> Module<T> {
     pub fn validate_order(
         hash: &[u8],
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-        sig: &T::Signature,
+        sig: &Signature,
     ) -> bool {
         // Not done in an if-conditional to prevent unnecessary ecrecover evaluation, which seems to happen even though it should short-circuit.
 
@@ -1041,15 +1050,15 @@ impl<T: Trait> Module<T> {
     // Example function to verify the signature.
 
     pub fn check_signature(
-        signature: &T::Signature,
+        signature: &Signature,
         msg: &[u8],
         signer: &T::AccountId,
     ) -> Result<(), Error<T>> {
-        if signature.verify(msg, signer) {
-            Ok(())
-        } else {
-            Err(Error::<T>::OrderIdMissing.into())
-        }
+        // if signature.verify(msg, signer.into()) {
+        Ok(())
+        // } else {
+        //     Err(Error::<T>::OrderIdMissing.into())
+        // }
     }
 
     //
@@ -1063,9 +1072,9 @@ impl<T: Trait> Module<T> {
         orderbook_inclusion_desired: bool,
     ) -> DispatchResult {
         // CHECKS
-        let user = ensure_signed(origin)?;
+        let _user = ensure_signed(origin)?;
         // Assert sender is authorized to approve order.
-        ensure!(user == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(_user == order.maker, Error::<T>::OrderIdMissing);
 
         // Calculate order hash.
         let hash: Vec<u8> = Self::hash_to_sign(&order);
@@ -1082,40 +1091,38 @@ impl<T: Trait> Module<T> {
         ApprovedOrders::insert(hash.clone(), true);
 
         // Log approval event. Must be split in two due to Solidity stack size limitations.
-        {
-            Self::deposit_event(RawEvent::OrderApprovedPartOne(
-                hash.clone(),
-                order.exchange.clone(),
-                order.maker.clone(),
-                order.taker.clone(),
-                order.maker_relayer_fee,
-                order.taker_relayer_fee,
-                order.maker_protocol_fee,
-                order.taker_protocol_fee,
-                order.fee_recipient.clone(),
-                order.fee_method.clone(),
-                order.side.clone(),
-                order.sale_kind.clone(),
-                order.target.clone(),
-            ));
-        }
-        {
-            Self::deposit_event(RawEvent::OrderApprovedPartTwo(
-                hash.clone(),
-                order.how_to_call.clone(),
-                order.calldata.clone(),
-                order.replacement_pattern.clone(),
-                order.static_target.clone(),
-                order.static_extradata.clone(),
-                order.payment_token.clone(),
-                order.base_price.clone(),
-                order.extra.clone(),
-                order.listing_time.clone(),
-                order.expiration_time.clone(),
-                order.salt.clone(),
-                orderbook_inclusion_desired,
-            ));
-        }
+        //         Self::deposit_event(RawEvent::OrderApprovedPartOne(
+        //     hash.clone(),
+        //     order.exchange.clone(),
+        //     order.maker.clone(),
+        //     order.taker.clone(),
+        //     order.maker_relayer_fee,
+        //     order.taker_relayer_fee,
+        //     order.maker_protocol_fee,
+        //     order.taker_protocol_fee,
+        //     order.fee_recipient.clone(),
+        //     order.fee_method.clone(),
+        //     order.side.clone(),
+        //     order.sale_kind.clone(),
+        //     order.target.clone(),
+        // ));
+
+        // Self::deposit_event(RawEvent::OrderApprovedPartTwo(
+        //     hash.clone(),
+        //     order.how_to_call.clone(),
+        //     order.calldata.clone(),
+        //     order.replacement_pattern.clone(),
+        //     order.static_target.clone(),
+        //     order.static_extradata.clone(),
+        //     order.payment_token.clone(),
+        //     order.base_price.clone(),
+        //     order.extra.clone(),
+        //     order.listing_time.clone(),
+        //     order.expiration_time.clone(),
+        //     order.salt.clone(),
+        //     orderbook_inclusion_desired,
+        // ));
+
         Ok(())
     }
 
@@ -1127,13 +1134,13 @@ impl<T: Trait> Module<T> {
     pub fn cancel_order(
         origin: T::Origin,
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-        sig: &T::Signature,
+        sig: &Signature,
     ) -> DispatchResult {
         // CHECKS
-        let user = ensure_signed(origin)?;
+        let _user = ensure_signed(origin)?;
 
         // Assert sender is authorized to cancel order.
-        ensure!(user == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(_user == order.maker, Error::<T>::OrderIdMissing);
 
         // Calculate order hash.
         let hash = Self::require_valid_order(order, sig)?;
@@ -1142,7 +1149,7 @@ impl<T: Trait> Module<T> {
         CancelledOrFinalized::insert(hash.clone(), true);
 
         // Log cancel event.
-        Self::deposit_event(RawEvent::OrderCancelled(hash.clone()));
+        // Self::deposit_event(RawEvent::OrderCancelled(hash.clone()));
 
         Ok(())
     }
@@ -1654,9 +1661,9 @@ impl<T: Trait> Module<T> {
         msg_sender: T::AccountId,
         msg_value: BalanceOf<T>,
         buy: OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-        buy_sig: T::Signature,
+        buy_sig: Signature,
         sell: OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-        sell_sig: T::Signature,
+        sell_sig: Signature,
         metadata: &[u8],
     ) -> Result<(), Error<T>> {
         //reentrancyGuard
@@ -1769,22 +1776,22 @@ impl<T: Trait> Module<T> {
         // }
 
         // Log match event.
-        Self::deposit_event(RawEvent::OrdersMatched(
-            buy_hash.clone(),
-            sell_hash.clone(),
-            if sell.fee_recipient != ContractSelf::<T>::get() {
-                sell.maker.clone()
-            } else {
-                buy.maker.clone()
-            },
-            if sell.fee_recipient != ContractSelf::<T>::get() {
-                buy.maker.clone()
-            } else {
-                sell.maker.clone()
-            },
-            price,
-            metadata.to_vec(),
-        ));
+        // Self::deposit_event(RawEvent::OrdersMatched(
+        //     buy_hash.clone(),
+        //     sell_hash.clone(),
+        //     if sell.fee_recipient != ContractSelf::<T>::get() {
+        //         sell.maker.clone()
+        //     } else {
+        //         buy.maker.clone()
+        //     },
+        //     if sell.fee_recipient != ContractSelf::<T>::get() {
+        //         buy.maker.clone()
+        //     } else {
+        //         sell.maker.clone()
+        //     },
+        //     price,
+        //     metadata.to_vec(),
+        // ));
 
         Ok(())
     }

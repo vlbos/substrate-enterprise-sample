@@ -3,7 +3,8 @@
 use crate::{Module, Trait};
 use core::marker::PhantomData;
 use frame_support::{
-    impl_outer_event, impl_outer_origin, parameter_types, traits::EnsureOrigin, weights::Weight,
+    impl_outer_event, impl_outer_origin, parameter_types, traits::EnsureOrigin,
+    traits::StorageMapShim, weights::Weight,
 };
 use frame_system as system;
 use frame_system::RawOrigin;
@@ -20,11 +21,31 @@ impl_outer_origin! {
     pub enum Origin for Test {}
 }
 
+// impl_outer_dispatch! {
+//     pub enum Call for Test where origin: Origin {
+//         balances::Balances,
+//         WyvernExchange,
+//     }
+// }
+
 impl_outer_event! {
     pub enum TestEvent for Test {
+balances<T>,
         system<T>,
         wyvern_exchange<T>,
     }
+}
+
+impl balances::Trait for Test {
+    type Balance = u64;
+    type DustRemoval = ();
+    // type TransferPayment = ();
+    type ExistentialDeposit = ExistentialDeposit;
+
+    type MaxLocks = ();
+    type Event = TestEvent;
+    type AccountStore = System;
+    type WeightInfo = ();
 }
 
 // For testing the pallet, we construct most of a mock runtime. This means
@@ -33,6 +54,7 @@ impl_outer_event! {
 #[derive(Clone, Eq, PartialEq)]
 pub struct Test;
 parameter_types! {
+pub const ExistentialDeposit: u64 = 500;
     pub const BlockHashCount: u64 = 250;
     pub const MaximumBlockWeight: Weight = 1024;
     pub const MaximumBlockLength: u32 = 2 * 1024;
@@ -61,7 +83,7 @@ impl system::Trait for Test {
     type AvailableBlockRatio = AvailableBlockRatio;
     type Version = ();
     type PalletInfo = ();
-    type AccountData = ();
+    type AccountData = balances::AccountData<u64>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -76,12 +98,15 @@ impl timestamp::Trait for Test {
 
 impl Trait for Test {
     type Event = TestEvent;
+    type Currency = Balances;
+
     // type CreateRoleOrigin = MockOrigin<Test>;
 }
 
 pub type WyvernExchange = Module<Test>;
 pub type System = system::Module<Test>;
 pub type Timestamp = timestamp::Module<Test>;
+pub type Balances = balances::Module<Test>;
 
 pub struct MockOrigin<T>(PhantomData<T>);
 
