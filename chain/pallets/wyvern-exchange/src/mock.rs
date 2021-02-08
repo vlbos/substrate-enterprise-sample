@@ -3,8 +3,8 @@
 use crate::{Module, Trait};
 use core::marker::PhantomData;
 use frame_support::{
-    impl_outer_event, impl_outer_origin, parameter_types, traits::EnsureOrigin,
-    traits::StorageMapShim, weights::Weight,
+    impl_outer_event, impl_outer_dispatch,impl_outer_origin, parameter_types, traits::EnsureOrigin,
+    traits::Currency,traits::StorageMapShim, weights::Weight,
 };
 use frame_system as system;
 use frame_system::RawOrigin;
@@ -14,7 +14,6 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     Perbill,
 };
-
 use crate as wyvern_exchange;
 
 impl_outer_origin! {
@@ -24,7 +23,7 @@ impl_outer_origin! {
 // impl_outer_dispatch! {
 //     pub enum Call for Test where origin: Origin {
 //         balances::Balances,
-//         WyvernExchange,
+//         // WyvernExchange,
 //     }
 // }
 
@@ -120,6 +119,9 @@ impl<T: Trait> EnsureOrigin<T::Origin> for MockOrigin<T> {
     }
 }
 
+pub fn create_account_test(account_id: sr25519::Public) {
+    let _ = Balances::deposit_creating(&account_id, 100_000_000_000_000_000);
+}
 // This function basically just builds a genesis storage key/value store according to
 // our desired mockup.
 pub fn new_test_ext() -> sp_io::TestExternalities {
