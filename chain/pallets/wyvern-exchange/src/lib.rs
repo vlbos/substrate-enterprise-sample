@@ -5,12 +5,14 @@
 
 use codec::{Decode, Encode};
 use core::result::Result;
+// use core::convert::TryInto;
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage,
+    debug, decl_error, decl_event, decl_module, decl_storage,
     dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo},
     ensure,
     sp_io::hashing::keccak_256,
     sp_runtime::{
+        print,
         traits::{
             DispatchInfoOf, Dispatchable, IdentifyAccount, Member, PostDispatchInfoOf,
             SaturatedConversion, Saturating, SignedExtension, Verify, Zero,
@@ -248,7 +250,7 @@ pub struct OrderType<AccountId, Moment, Balance> {
     // Expiration timestamp - 0 for no expiry.
     pub expiration_time: Moment,
     // OrderType salt, used to prevent duplicate hashes.
-    pub salt: u32,
+    pub salt: u64,
     pub registered: Moment,
 }
 
@@ -348,7 +350,7 @@ decl_event!(
             Moment,
             Moment,
             Moment,
-            u32,
+            u64,
             bool,
         ),
         OrderCancelled(Vec<u8>),
@@ -361,9 +363,29 @@ decl_error! {
         OrderIdMissing,
         OrderIdTooLong,
         OrderIdExists,
-        OrderTooManyFields,
+        OrdersCannotMatch,
+  OrdersCannotMatch1,
         OrderInvalidFieldName,
-        OrderInvalidFieldValue
+ArraySizeNotAsSameAsDesired,
+ArraySizeNotAsSameAsMask,
+BuyTakerProtocolFeeGreaterThanSellTakerProtocolFee,
+BuyTakerRelayerFeeGreaterThanSellTakerRelayerFee,
+SellPaymentTokenEqualPaymentToken,
+SellTakerProtocolFeeGreaterThanBuyTakerProtocolFee,
+SellTakerRelayerFeeGreaterThanBuyTakerRelayerFee,
+ValueLessThanRequiredAmount,
+ValueNotZero,
+BuyPriceLessThanSellPrice,
+        OrderHashMissing,
+        OnlyMaker,
+        OrderHashInvalid,
+OrderHashInvalid1,
+        OrderHashInvalid2,
+OrderHashInvalid3,
+        OrderHashInvalid4,
+OrderHashInvalid5,
+        OrderHashInvalid6,
+OrderHashInvalid7,
     }
 }
 
@@ -379,7 +401,7 @@ decl_module! {
 #[weight = 10_000]
     pub fn approve_order_ex(origin,
          addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -411,7 +433,7 @@ let _user = ensure_signed(origin.clone())?;
     pub fn cancel_order_ex(
         origin,
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -446,7 +468,7 @@ let _user = ensure_signed(origin.clone())?;
     pub fn atomic_match_ex(
         origin,
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_methods_sides_kinds_how_to_calls: Vec<u8>,
         calldata_buy: Vec<u8>,
         calldata_sell: Vec<u8>,
@@ -552,7 +574,7 @@ impl<T: Trait> Module<T> {
         extra: T::Moment,
         listing_time: T::Moment,
         expiration_time: T::Moment,
-    ) -> BalanceOf<T> {
+    ) -> Result<BalanceOf<T>, Error<T>> {
         Self::calculate_final_price(
             &side,
             &sale_kind,
@@ -568,7 +590,7 @@ impl<T: Trait> Module<T> {
     //
     pub fn hash_order_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -576,7 +598,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, Error<T>> {
         Self::hash_order(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -594,7 +616,7 @@ impl<T: Trait> Module<T> {
 
     pub fn hash_to_sign_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -602,7 +624,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, Error<T>> {
         Self::hash_to_sign(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -622,7 +644,7 @@ impl<T: Trait> Module<T> {
 
     pub fn validate_order_parameters_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -630,7 +652,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
             uints,
@@ -651,7 +673,7 @@ impl<T: Trait> Module<T> {
 
     pub fn validate_order_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -660,7 +682,7 @@ impl<T: Trait> Module<T> {
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
         sig: Signature,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
             uints,
@@ -672,7 +694,7 @@ impl<T: Trait> Module<T> {
             &replacement_pattern,
             &static_extradata,
         );
-        Self::validate_order(&Self::hash_to_sign(&order), &order, &sig)
+        Self::validate_order(&Self::hash_to_sign(&order)?, &order, &sig)
     }
 
     //
@@ -681,7 +703,7 @@ impl<T: Trait> Module<T> {
 
     pub fn calculate_current_price_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -689,7 +711,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> BalanceOf<T> {
+    ) -> Result<BalanceOf<T>, Error<T>> {
         Self::calculate_current_price(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -709,7 +731,7 @@ impl<T: Trait> Module<T> {
 
     pub fn orders_can_match_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_methods_sides_kinds_how_to_calls: Vec<u8>,
         calldata_buy: Vec<u8>,
         calldata_sell: Vec<u8>,
@@ -717,7 +739,7 @@ impl<T: Trait> Module<T> {
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         let bs = Self::build_order_type_arr2(
             addrs,
             uints,
@@ -746,7 +768,7 @@ impl<T: Trait> Module<T> {
         buy_replacement_pattern: Vec<u8>,
         sell_calldata: Vec<u8>,
         sell_replacement_pattern: Vec<u8>,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         let mut tmpbuy_calldata = buy_calldata.clone();
         let mut tmpsell_calldata = sell_calldata.clone();
         if buy_replacement_pattern.len() > 0 {
@@ -775,7 +797,7 @@ impl<T: Trait> Module<T> {
 
     pub fn calculate_match_price_ex(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_methods_sides_kinds_how_to_calls: Vec<u8>,
         calldata_buy: Vec<u8>,
         calldata_sell: Vec<u8>,
@@ -866,61 +888,6 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    pub fn u32_to_balance(_input: BalanceOf<T>) {
-        let my_u32: u32 = 0;
-        let _my_balance: BalanceOf<T> = my_u32.into();
-        let _my_balance1: BalanceOf<T> = my_u32.into();
-        let _a = _my_balance - _my_balance1;
-        let _s = _my_balance * _my_balance1;
-        // let _my:u32 = _my_balance1.try_into<u32>();
-        let _mm: T::Moment = T::Moment::from(3); //T::Moment::get();
-        let _mm1: T::Moment = T::Moment::from(3); //T::Moment::get();
-        let _mm: T::Moment = _mm + _mm1; //T::Moment::get();
-        let _mm: T::Moment = Zero::zero(); //T::Moment::get();
-        let _my_balance: BalanceOf<T> = Zero::zero();
-        // let _m :u32 = _mm.try_into();
-    }
-
-    // pub fn u64_to_balance(_input: u64) -> Option<BalanceOf<T>> {
-    // let my_u32:u32 = _input as u32;
-    //  Some(my_u32.into())
-    // //    BalanceOf::<T>::try_from(_input as u32)//.try_into().ok()
-    // }
-
-    // pub fn u64_to_balance_saturated(_input: u64) -> BalanceOf<T> {
-    // let my_u32:u32 = _input as u32;
-    //  my_u32.into()
-    //     // BalanceOf::<T>::saturated_from(_input as u32) //.saturated_into()
-    // }
-
-    pub fn u64_to_balance_option(input: u64) -> Option<BalanceOf<T>> {
-        // use sp_std::convert::{TryFrom, TryInto};
-        // input.try_into().ok()
-        Some(Zero::zero())
-    }
-
-    // Note the warning above about saturated conversions
-    // pub fn u64_to_balance_saturated(input: u64) -> BalanceOf<T> {
-    //     input.saturated_into()
-    // }
-
-    pub fn balance_to_u64(input: BalanceOf<T>) -> Option<u64> {
-        // use sp_std::convert::{TryFrom, TryInto};
-        //         TryInto::<u64>::try_into(input).ok()
-
-        Some(input.saturated_into::<u64>())
-    }
-    pub fn moment_to_u64(input: T::Moment) -> Option<u64> {
-        // use sp_std::convert::{TryFrom, TryInto};
-        //         TryInto::<u64>::try_into(input).ok()
-        Some(input.saturated_into::<u64>())
-    }
-
-    // Note the warning above about saturated conversions
-    // pub fn balance_to_u64_saturated(input: T::Balance) -> u64 {
-    //     input.saturated_into::<u64>()
-    // }
-    //
     //#dev Charge a fee in protocol tokens
     //#param from AccountId to charge fees
     //#param to AccountId to receive fees
@@ -939,10 +906,12 @@ impl<T: Trait> Module<T> {
     //#param order OrderType to hash
     //#return Hash of order
     //
-    pub fn hash_order(order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>) -> Vec<u8> {
+    pub fn hash_order(
+        order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
+    ) -> Result<Vec<u8>, Error<T>> {
         // hash := keccak256(add(array, 0x20), size)
         //    sp_io::hashing::blake2_256(&h).into()
-        keccak_256(&order.encode()).into()
+        Ok(keccak_256(&order.encode()).into())
         // }
         // }
         // return hash;
@@ -953,8 +922,10 @@ impl<T: Trait> Module<T> {
     //#param order OrderType to hash
     //#return Hash of message prefix and order hash per Ethereum format
     //
-    pub fn hash_to_sign(order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>) -> Vec<u8> {
-        keccak_256(&Self::hash_order(&order)).to_vec()
+    pub fn hash_to_sign(
+        order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
+    ) -> Result<Vec<u8>, Error<T>> {
+        Ok(keccak_256(&Self::hash_order(&order)?).to_vec())
     }
 
     //
@@ -966,10 +937,10 @@ impl<T: Trait> Module<T> {
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
         sig: &Signature,
     ) -> Result<Vec<u8>, Error<T>> {
-        let hash: Vec<u8> = Self::hash_to_sign(&order);
+        let hash: Vec<u8> = Self::hash_to_sign(&order)?;
         ensure!(
-            Self::validate_order(&hash, order, sig),
-            Error::<T>::OrderIdMissing
+            Self::validate_order(&hash, order, sig)?,
+            Error::<T>::OrderHashInvalid
         );
         Ok(hash)
     }
@@ -980,16 +951,21 @@ impl<T: Trait> Module<T> {
     //
     pub fn validate_order_parameters(
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         // OrderType must be targeted at this protocol version (this contract:Exchange).
         //TODO
         if order.exchange != ContractSelf::<T>::get() {
-            return false;
+            frame_support::debug::RuntimeLogger::init();
+            debug::error!("exchange is contract self.");
+            ensure!(false, Error::<T>::OrderHashInvalid1);
+            return Ok(false);
         }
 
         // OrderType must possess valid sale kind parameter combination.
-        if !Self::validate_parameters(&order.sale_kind, order.expiration_time) {
-            return false;
+        if !Self::validate_parameters(&order.sale_kind, order.expiration_time)? {
+            ensure!(false, Error::<T>::OrderHashInvalid2);
+            debug::error!("validate_parameters is false.");
+            return Ok(false);
         }
 
         // If using the split fee method, order must have sufficient protocol fees.
@@ -997,10 +973,12 @@ impl<T: Trait> Module<T> {
             && (order.maker_protocol_fee < MinimumMakerProtocolFee::<T>::get()
                 || order.taker_protocol_fee < MinimumTakerProtocolFee::<T>::get())
         {
-            return false;
+            ensure!(false, Error::<T>::OrderHashInvalid3);
+            debug::error!("fee_method is not split fee or maker_protocol_fee greater than setting or taker_protocol_fee greater than setting.");
+            return Ok(false);
         }
 
-        true
+        Ok(true)
     }
 
     //
@@ -1013,23 +991,31 @@ impl<T: Trait> Module<T> {
         hash: &[u8],
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
         sig: &Signature,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         // Not done in an if-conditional to prevent unnecessary ecrecover evaluation, which seems to happen even though it should short-circuit.
-
+        frame_support::debug::RuntimeLogger::init();
+        debug::error!("exchange is contract self.");
+        print("================");
         // OrderType must have valid parameters.
-        if !Self::validate_order_parameters(&order) {
-            return false;
+        if !Self::validate_order_parameters(&order)? {
+            debug::error!("exchange is contract self.");
+            ensure!(false, Error::<T>::OrderHashInvalid4);
+            return Ok(false);
         }
 
         // OrderType must have not been canceled or already filled.
         if CancelledOrFinalized::get(hash) {
-            return false;
+            debug::error!("exchange is contract self.");
+            ensure!(false, Error::<T>::OrderHashInvalid5);
+            return Ok(false);
         }
 
         // OrderType authentication. OrderType must be either:
         // (a) previously approved
         if ApprovedOrders::get(hash) {
-            return true;
+            debug::error!("exchange is contract self.");
+            ensure!(false, Error::<T>::OrderHashInvalid6);
+            return Ok(true);
         }
 
         // or (b) ECDSA-signed by maker.
@@ -1037,10 +1023,12 @@ impl<T: Trait> Module<T> {
         //     return true;
         // }
         if Self::check_signature(&sig, &hash, order.maker()).is_ok() {
-            return true;
-        }
+            debug::error!("exchange is contract self.");
 
-        false
+            return Ok(true);
+        }
+        ensure!(false, Error::<T>::OrderHashInvalid7);
+        Ok(false)
     }
 
     // An alterantive way to validate a signature is:
@@ -1074,15 +1062,15 @@ impl<T: Trait> Module<T> {
         // CHECKS
         let _user = ensure_signed(origin)?;
         // Assert sender is authorized to approve order.
-        ensure!(_user == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(_user == order.maker, Error::<T>::OnlyMaker);
 
         // Calculate order hash.
-        let hash: Vec<u8> = Self::hash_to_sign(&order);
+        let hash: Vec<u8> = Self::hash_to_sign(&order)?;
 
         // Assert order has not already been approved.
         ensure!(
             !ApprovedOrders::get(hash.clone()),
-            Error::<T>::OrderIdMissing
+            Error::<T>::OrderHashMissing
         );
 
         // EFFECTS
@@ -1091,37 +1079,37 @@ impl<T: Trait> Module<T> {
         ApprovedOrders::insert(hash.clone(), true);
 
         // Log approval event. Must be split in two due to Solidity stack size limitations.
-        //         Self::deposit_event(RawEvent::OrderApprovedPartOne(
-        //     hash.clone(),
-        //     order.exchange.clone(),
-        //     order.maker.clone(),
-        //     order.taker.clone(),
-        //     order.maker_relayer_fee,
-        //     order.taker_relayer_fee,
-        //     order.maker_protocol_fee,
-        //     order.taker_protocol_fee,
-        //     order.fee_recipient.clone(),
-        //     order.fee_method.clone(),
-        //     order.side.clone(),
-        //     order.sale_kind.clone(),
-        //     order.target.clone(),
-        // ));
+        Self::deposit_event(RawEvent::OrderApprovedPartOne(
+            hash.clone(),
+            order.exchange.clone(),
+            order.maker.clone(),
+            order.taker.clone(),
+            order.maker_relayer_fee,
+            order.taker_relayer_fee,
+            order.maker_protocol_fee,
+            order.taker_protocol_fee,
+            order.fee_recipient.clone(),
+            order.fee_method.clone(),
+            order.side.clone(),
+            order.sale_kind.clone(),
+            order.target.clone(),
+        ));
 
-        // Self::deposit_event(RawEvent::OrderApprovedPartTwo(
-        //     hash.clone(),
-        //     order.how_to_call.clone(),
-        //     order.calldata.clone(),
-        //     order.replacement_pattern.clone(),
-        //     order.static_target.clone(),
-        //     order.static_extradata.clone(),
-        //     order.payment_token.clone(),
-        //     order.base_price.clone(),
-        //     order.extra.clone(),
-        //     order.listing_time.clone(),
-        //     order.expiration_time.clone(),
-        //     order.salt.clone(),
-        //     orderbook_inclusion_desired,
-        // ));
+        Self::deposit_event(RawEvent::OrderApprovedPartTwo(
+            hash.clone(),
+            order.how_to_call.clone(),
+            order.calldata.clone(),
+            order.replacement_pattern.clone(),
+            order.static_target.clone(),
+            order.static_extradata.clone(),
+            order.payment_token.clone(),
+            order.base_price.clone(),
+            order.extra.clone(),
+            order.listing_time.clone(),
+            order.expiration_time.clone(),
+            order.salt.clone(),
+            orderbook_inclusion_desired,
+        ));
 
         Ok(())
     }
@@ -1140,7 +1128,7 @@ impl<T: Trait> Module<T> {
         let _user = ensure_signed(origin)?;
 
         // Assert sender is authorized to cancel order.
-        ensure!(_user == order.maker, Error::<T>::OrderIdMissing);
+        ensure!(_user == order.maker, Error::<T>::OnlyMaker);
 
         // Calculate order hash.
         let hash = Self::require_valid_order(order, sig)?;
@@ -1149,7 +1137,7 @@ impl<T: Trait> Module<T> {
         CancelledOrFinalized::insert(hash.clone(), true);
 
         // Log cancel event.
-        // Self::deposit_event(RawEvent::OrderCancelled(hash.clone()));
+        Self::deposit_event(RawEvent::OrderCancelled(hash.clone()));
 
         Ok(())
     }
@@ -1161,7 +1149,7 @@ impl<T: Trait> Module<T> {
     //
     pub fn calculate_current_price(
         order: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-    ) -> BalanceOf<T> {
+    ) -> Result<BalanceOf<T>, Error<T>> {
         Self::calculate_final_price(
             &order.side,
             &order.sale_kind,
@@ -1190,7 +1178,7 @@ impl<T: Trait> Module<T> {
             sell.extra,
             sell.listing_time,
             sell.expiration_time,
-        );
+        )?;
 
         // Calculate buy price.
         let buy_price: BalanceOf<T> = Self::calculate_final_price(
@@ -1200,10 +1188,13 @@ impl<T: Trait> Module<T> {
             buy.extra,
             buy.listing_time,
             buy.expiration_time,
-        );
+        )?;
 
         // Require price cross.
-        ensure!(buy_price >= sell_price, Error::<T>::OrderIdMissing);
+        ensure!(
+            buy_price >= sell_price,
+            Error::<T>::BuyPriceLessThanSellPrice
+        );
 
         // Maker/taker priority.
         let price: BalanceOf<T> = if sell.fee_recipient != ContractSelf::<T>::get() {
@@ -1228,7 +1219,7 @@ impl<T: Trait> Module<T> {
         // let originprotocol_fee_recipient = ProtocolFeeRecipient::<T>::get();
         // Only payable in the special case of unwrapped Ether.
         if sell.payment_token != ContractSelf::<T>::get() {
-            ensure!(msg_value == Zero::zero(), Error::<T>::OrderIdMissing);
+            ensure!(msg_value == Zero::zero(), Error::<T>::ValueNotZero);
         }
 
         // Calculate match price.
@@ -1431,7 +1422,10 @@ impl<T: Trait> Module<T> {
 
         if sell.payment_token == ContractSelf::<T>::get() {
             // Special-case Ether, order must be matched by buyer.
-            ensure!(msg_value >= required_amount, Error::<T>::OrderIdMissing);
+            ensure!(
+                msg_value >= required_amount,
+                Error::<T>::ValueLessThanRequiredAmount
+            );
             // sell.maker.transfer(receive_amount);
             Self::transfer_tokens(
                 &ContractSelf::<T>::get(),
@@ -1477,14 +1471,14 @@ impl<T: Trait> Module<T> {
         // Assert taker fee is less than or equal to maximum fee specified by buyer.
         ensure!(
             sell.taker_relayer_fee <= buy.taker_relayer_fee,
-            Error::<T>::OrderIdMissing
+            Error::<T>::SellTakerRelayerFeeGreaterThanBuyTakerRelayerFee
         );
 
         if sell.fee_method == FeeMethod::SplitFee {
             // Assert taker fee is less than or equal to maximum fee specified by buyer.
             ensure!(
                 sell.taker_protocol_fee <= buy.taker_protocol_fee,
-                Error::<T>::OrderIdMissing
+                Error::<T>::SellTakerProtocolFeeGreaterThanBuyTakerProtocolFee
             );
 
             // Maker fees are deducted from the token amount that the maker receives. Taker fees are extra tokens that must be paid by the taker.
@@ -1559,20 +1553,20 @@ impl<T: Trait> Module<T> {
         // Assert taker fee is less than or equal to maximum fee specified by seller.
         ensure!(
             buy.taker_relayer_fee <= sell.taker_relayer_fee,
-            Error::<T>::OrderIdMissing
+            Error::<T>::BuyTakerRelayerFeeGreaterThanSellTakerRelayerFee
         );
 
         if sell.fee_method == FeeMethod::SplitFee {
             // The Exchange does not escrow Ether, so direct Ether can only be used to with sell-side maker / buy-side taker orders.
             ensure!(
                 sell.payment_token != ContractSelf::<T>::get(),
-                Error::<T>::OrderIdMissing
+                Error::<T>::SellPaymentTokenEqualPaymentToken
             );
 
             // Assert taker fee is less than or equal to maximum fee specified by seller.
             ensure!(
                 buy.taker_protocol_fee <= sell.taker_protocol_fee,
-                Error::<T>::OrderIdMissing
+                Error::<T>::BuyTakerProtocolFeeGreaterThanSellTakerProtocolFee
             );
 
             Self::transfer_tokens_fee(
@@ -1628,9 +1622,9 @@ impl<T: Trait> Module<T> {
     pub fn orders_can_match(
         buy: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
         sell: &OrderType<T::AccountId, T::Moment, BalanceOf<T>>,
-    ) -> bool {
+    ) -> Result<bool, Error<T>> {
         //  Must be opposite-side.
-        (buy.side == Side::Buy && sell.side == Side::Sell) &&
+        Ok((buy.side == Side::Buy && sell.side == Side::Sell) &&
             // Must use same fee method.
             (buy.fee_method == sell.fee_method) &&
             // Must use same payment token. 
@@ -1645,9 +1639,9 @@ impl<T: Trait> Module<T> {
             // Must match how_to_call. 
             (buy.how_to_call == sell.how_to_call) &&
             // Buy-side order must be settleable. 
-            Self::can_settle_order(buy.listing_time, buy.expiration_time) &&
+            Self::can_settle_order(buy.listing_time, buy.expiration_time)? &&
             // Sell-side order must be settleable. 
-            Self::can_settle_order(sell.listing_time, sell.expiration_time)
+            Self::can_settle_order(sell.listing_time, sell.expiration_time)?)
     }
 
     //
@@ -1673,8 +1667,8 @@ impl<T: Trait> Module<T> {
         let mut buy_hash: Vec<u8> = vec![];
         if buy.maker == msg_sender {
             ensure!(
-                Self::validate_order_parameters(&buy),
-                Error::<T>::OrderIdMissing
+                Self::validate_order_parameters(&buy)?,
+                Error::<T>::OrderIdTooLong
             );
         } else {
             buy_hash = Self::require_valid_order(&buy, &buy_sig)?;
@@ -1684,8 +1678,8 @@ impl<T: Trait> Module<T> {
         let mut sell_hash: Vec<u8> = vec![];
         if sell.maker == msg_sender {
             ensure!(
-                Self::validate_order_parameters(&sell),
-                Error::<T>::OrderIdMissing
+                Self::validate_order_parameters(&sell)?,
+                Error::<T>::OrderIdExists
             );
         } else {
             sell_hash = Self::require_valid_order(&sell, &sell_sig)?;
@@ -1693,8 +1687,8 @@ impl<T: Trait> Module<T> {
 
         // Must be matchable.
         ensure!(
-            Self::orders_can_match(&buy, &sell),
-            Error::<T>::OrderIdMissing
+            Self::orders_can_match(&buy, &sell)?,
+            Error::<T>::OrdersCannotMatch
         );
 
         // Target must exist (prevent malicious selfdestructs just prior to settlement:order).
@@ -1723,8 +1717,8 @@ impl<T: Trait> Module<T> {
             )?;
         }
         ensure!(
-            Self::array_eq(&buycalldata, &sellcalldata),
-            Error::<T>::OrderIdMissing
+            Self::array_eq(&buycalldata, &sellcalldata)?,
+            Error::<T>::OrderInvalidFieldName
         );
 
         // // Retrieve delegateProxy contract.
@@ -1751,6 +1745,10 @@ impl<T: Trait> Module<T> {
             CancelledOrFinalized::insert(sell_hash.clone(), true);
         }
 
+        debug::info!(
+            "[product_tracking_ocw] Error reading product_tracking_ocw::last_proccessed_block."
+        );
+
         // INTERACTIONS
 
         // Execute funds transfer and pay fees.
@@ -1776,22 +1774,22 @@ impl<T: Trait> Module<T> {
         // }
 
         // Log match event.
-        // Self::deposit_event(RawEvent::OrdersMatched(
-        //     buy_hash.clone(),
-        //     sell_hash.clone(),
-        //     if sell.fee_recipient != ContractSelf::<T>::get() {
-        //         sell.maker.clone()
-        //     } else {
-        //         buy.maker.clone()
-        //     },
-        //     if sell.fee_recipient != ContractSelf::<T>::get() {
-        //         buy.maker.clone()
-        //     } else {
-        //         sell.maker.clone()
-        //     },
-        //     price,
-        //     metadata.to_vec(),
-        // ));
+        Self::deposit_event(RawEvent::OrdersMatched(
+            buy_hash.clone(),
+            sell_hash.clone(),
+            if sell.fee_recipient != ContractSelf::<T>::get() {
+                sell.maker.clone()
+            } else {
+                buy.maker.clone()
+            },
+            if sell.fee_recipient != ContractSelf::<T>::get() {
+                buy.maker.clone()
+            } else {
+                sell.maker.clone()
+            },
+            price,
+            metadata.to_vec(),
+        ));
 
         Ok(())
     }
@@ -1803,9 +1801,12 @@ impl<T: Trait> Module<T> {
     //#param expiration_time OrderType expiration time
     //#return Whether the parameters were valid
     //
-    pub fn validate_parameters(sale_kind: &SaleKind, expiration_time: T::Moment) -> bool {
+    pub fn validate_parameters(
+        sale_kind: &SaleKind,
+        expiration_time: T::Moment,
+    ) -> Result<bool, Error<T>> {
         // Auctions must have a set expiration date.
-        *sale_kind == SaleKind::FixedPrice || expiration_time > Zero::zero()
+        Ok(*sale_kind == SaleKind::FixedPrice || expiration_time > Zero::zero())
     }
 
     //
@@ -1814,9 +1815,16 @@ impl<T: Trait> Module<T> {
     //#param listing_time OrderType listing time
     //#param expiration_time OrderType expiration time
     //
-    pub fn can_settle_order(listing_time: T::Moment, expiration_time: T::Moment) -> bool {
-        let now: T::Moment = Zero::zero(); //<system::Module<T>>::block_number() ;//<timestamp::Module<T>>::now();
-        (listing_time < now) && (expiration_time == Zero::zero() || now < expiration_time)
+    pub fn can_settle_order(
+        listing_time: T::Moment,
+        expiration_time: T::Moment,
+    ) -> Result<bool, Error<T>> {
+        let now: T::Moment = T::Moment::from(3); //<timestamp::Module<T>>::now();//<system::Module<T>>::block_number() ;////<timestamp::Module<T>>::now();
+        ensure!(
+            (listing_time < now) && (expiration_time == Zero::zero() || now < expiration_time),
+            Error::<T>::OrdersCannotMatch1
+        );
+        Ok((listing_time < now) && (expiration_time == Zero::zero() || now < expiration_time))
     }
 
     //
@@ -1836,33 +1844,24 @@ impl<T: Trait> Module<T> {
         extra: T::Moment,
         listing_time: T::Moment,
         expiration_time: T::Moment,
-    ) -> BalanceOf<T> {
+    ) -> Result<BalanceOf<T>, Error<T>> {
         if *sale_kind == SaleKind::FixedPrice {
-            base_price
+            Ok(base_price)
         } else if *sale_kind == SaleKind::DutchAuction {
             let now: T::Moment = Zero::zero(); // <system::Module<T>>::block_number();//<timestamp::Module<T>>::now() ;
             let diff: T::Moment = extra * (now - listing_time) / (expiration_time - listing_time);
             if *side == Side::Sell {
                 // Sell-side - start price: base_price. End price: base_price - extra.
-                base_price - Self::moment_to_balance(&diff)
+                Ok(base_price - Self::moment_to_balance(&diff))
             } else {
                 // Buy-side - start price: base_price. End price: base_price + extra.
-                base_price - Self::moment_to_balance(&diff)
+                Ok(base_price - Self::moment_to_balance(&diff))
             }
         } else {
-            Zero::zero()
+            Ok(Zero::zero())
         }
     }
-    pub fn moment_to_balance(m: &T::Moment) -> BalanceOf<T> {
-        let mut _b: BalanceOf<T> = Zero::zero();
-        if let Some(m) = Self::moment_to_u64(*m) {
-            if let Some(bo) = Self::u64_to_balance_option(m) {
-                _b = bo;
-            }
-        }
 
-        _b
-    }
     //
     //Replace Vec<u8> in an array with Vec<u8> in another array, guarded by a bitmask
     //Efficiency of this fn is a bit unpredictable because of the EVM's word-specific model (arrays under 32 Vec<u8> will be slower)
@@ -1877,8 +1876,14 @@ impl<T: Trait> Module<T> {
         desired: &[u8],
         mask: &[u8],
     ) -> Result<bool, Error<T>> {
-        ensure!(array.len() == desired.len(), Error::<T>::OrderIdMissing);
-        ensure!(array.len() == mask.len(), Error::<T>::OrderIdMissing);
+        ensure!(
+            array.len() == desired.len(),
+            Error::<T>::ArraySizeNotAsSameAsDesired
+        );
+        ensure!(
+            array.len() == mask.len(),
+            Error::<T>::ArraySizeNotAsSameAsMask
+        );
         let arr = array.clone();
         for (i, &_item) in arr.iter().enumerate() {
             // Conceptually: array[i] = (!mask[i] && array[i]) || (mask[i] && desired[i]), bitwise in word chunks.
@@ -1895,17 +1900,17 @@ impl<T: Trait> Module<T> {
     //#param b Second array
     //#return Whether or not all Vec<u8> in the arrays are equal
     //
-    pub fn array_eq(a: &[u8], b: &[u8]) -> bool {
+    pub fn array_eq(a: &[u8], b: &[u8]) -> Result<bool, Error<T>> {
         if a.len() != b.len() {
-            return false;
+            return Ok(false);
         }
 
-        a == b
+        Ok(a == b)
     }
 
     pub fn build_order_type_arr(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_method: FeeMethod,
         side: Side,
         sale_kind: SaleKind,
@@ -1918,10 +1923,10 @@ impl<T: Trait> Module<T> {
             addrs[0].clone(),
             addrs[1].clone(),
             addrs[2].clone(),
-            uints[0].into(),
-            uints[1].into(),
-            uints[2].into(),
-            uints[3].into(),
+            Self::u64_to_balance_saturated(uints[0]),
+            Self::u64_to_balance_saturated(uints[1]),
+            Self::u64_to_balance_saturated(uints[2]),
+            Self::u64_to_balance_saturated(uints[3]),
             addrs[3].clone(),
             fee_method,
             side,
@@ -1933,17 +1938,17 @@ impl<T: Trait> Module<T> {
             addrs[5].clone(),
             static_extradata.to_vec(),
             addrs[6].clone(),
-            uints[4].into(),
-            uints[5].into(),
-            uints[6].into(),
-            uints[7].into(),
+            Self::u64_to_balance_saturated(uints[4]),
+            Self::u64_to_moment_saturated(uints[5]),
+            Self::u64_to_moment_saturated(uints[6]),
+            Self::u64_to_moment_saturated(uints[7]),
             uints[8],
         )
     }
 
     pub fn build_order_type_arr2(
         addrs: Vec<T::AccountId>,
-        uints: Vec<u32>,
+        uints: Vec<u64>,
         fee_methods_sides_kinds_how_to_calls: &[u8],
         calldata_buy: &[u8],
         calldata_sell: &[u8],
@@ -1956,10 +1961,10 @@ impl<T: Trait> Module<T> {
             addrs[0].clone(),
             addrs[1].clone(),
             addrs[2].clone(),
-            uints[0].into(),
-            uints[1].into(),
-            uints[2].into(),
-            uints[3].into(),
+            Self::u64_to_balance_saturated(uints[0]),
+            Self::u64_to_balance_saturated(uints[1]),
+            Self::u64_to_balance_saturated(uints[2]),
+            Self::u64_to_balance_saturated(uints[3]),
             addrs[3].clone(),
             FeeMethod::from(fee_methods_sides_kinds_how_to_calls[0]),
             Side::from(fee_methods_sides_kinds_how_to_calls[1]),
@@ -1971,20 +1976,20 @@ impl<T: Trait> Module<T> {
             addrs[5].clone(),
             static_extradata_buy.to_vec(),
             addrs[6].clone(),
-            uints[4].into(),
-            uints[5].into(),
-            uints[6].into(),
-            uints[7].into(),
+            Self::u64_to_balance_saturated(uints[4]),
+            Self::u64_to_moment_saturated(uints[5]),
+            Self::u64_to_moment_saturated(uints[6]),
+            Self::u64_to_moment_saturated(uints[7]),
             uints[8],
         );
         let sell: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type(
             addrs[7].clone(),
             addrs[8].clone(),
             addrs[9].clone(),
-            uints[9].into(),
-            uints[10].into(),
-            uints[11].into(),
-            uints[12].into(),
+            Self::u64_to_balance_saturated(uints[9]),
+            Self::u64_to_balance_saturated(uints[10]),
+            Self::u64_to_balance_saturated(uints[11]),
+            Self::u64_to_balance_saturated(uints[12]),
             addrs[10].clone(),
             FeeMethod::from(fee_methods_sides_kinds_how_to_calls[4]),
             Side::from(fee_methods_sides_kinds_how_to_calls[5]),
@@ -1996,11 +2001,11 @@ impl<T: Trait> Module<T> {
             addrs[12].clone(),
             static_extradata_sell.to_vec(),
             addrs[13].clone(),
-            uints[13].into(),
-            uints[14].into(),
-            uints[15].into(),
-            uints[16].into(),
-            uints[17],
+            Self::u64_to_balance_saturated(uints[13]),
+            Self::u64_to_moment_saturated(uints[14]),
+            Self::u64_to_moment_saturated(uints[15]),
+            Self::u64_to_moment_saturated(uints[16]),
+            uints[17].into(),
         );
         vec![buy, sell]
     }
@@ -2049,7 +2054,7 @@ impl<T: Trait> Module<T> {
         // Expiration timestamp - 0 for no expiry.
         expiration_time: T::Moment,
         // OrderType salt, used to prevent duplicate hashes.
-        salt: u32,
+        salt: u64,
     ) -> OrderType<T::AccountId, T::Moment, BalanceOf<T>> {
         OrderType::<T::AccountId, T::Moment, BalanceOf<T>>::new(
             exchange,
@@ -2098,6 +2103,79 @@ impl<T: Trait> Module<T> {
             // OrderType salt, used to prevent duplicate hashes.
             salt,
         )
+    }
+
+    pub fn u32_to_balance(_input: BalanceOf<T>) {
+        let my_u32: u32 = 0;
+        let _my_balance: BalanceOf<T> = my_u32.into();
+        let _my_balance1: BalanceOf<T> = my_u32.into();
+        let _a = _my_balance - _my_balance1;
+        let _s = _my_balance * _my_balance1;
+        // let _my:u32 = _my_balance1.try_into<u32>();
+        let _mm: T::Moment = T::Moment::from(3); //T::Moment::get();
+        let _mm1: T::Moment = T::Moment::from(3); //T::Moment::get();
+        let _mm: T::Moment = _mm + _mm1; //T::Moment::get();
+        let _mm: T::Moment = Zero::zero(); //T::Moment::get();
+        let _my_balance: BalanceOf<T> = Zero::zero();
+        // let _m :u32 = _mm.try_into();
+    }
+
+    // pub fn u64_to_balance(_input: u64) -> Option<BalanceOf<T>> {
+    // let my_u32:u32 = _input as u32;
+    //  Some(my_u32.into())
+    // //    BalanceOf::<T>::try_from(_input as u32)//.try_into().ok()
+    // }
+
+    pub fn u64_to_balance_saturated(_input: u64) -> BalanceOf<T> {
+        // let my_u32:u32 = _input as u32;
+        //  my_u32.into()
+        BalanceOf::<T>::saturated_from(_input.into()) //.saturated_into()
+    }
+
+    pub fn u64_to_moment_saturated(_input: u64) -> T::Moment {
+        // let my_u32:u32 = _input as u32;
+        //  my_u32.into()
+        T::Moment::saturated_from(_input.into()) //.saturated_into()
+    }
+
+    pub fn u64_to_balance_option(input: u64) -> Option<BalanceOf<T>> {
+        // use sp_std::convert::{TryFrom, TryInto};
+        // input.try_into().ok()
+        Some(Zero::zero())
+    }
+
+    // Note the warning above about saturated conversions
+    // pub fn Self::u64_to_balance_saturated(input: u64) -> BalanceOf<T> {
+    //     input.saturated_into()
+    // }
+
+    pub fn balance_to_u64(input: BalanceOf<T>) -> Option<u64> {
+        // use sp_std::convert::{TryFrom, TryInto};
+        //         TryInto::<u64>::try_into(input).ok()
+
+        Some(input.saturated_into::<u64>())
+    }
+    pub fn moment_to_u64(input: T::Moment) -> Option<u64> {
+        // use sp_std::convert::{TryFrom, TryInto};
+        //         TryInto::<u64>::try_into(input).ok()
+        Some(input.saturated_into::<u64>())
+    }
+
+    // Note the warning above about saturated conversions
+    // pub fn balance_to_u64_saturated(input: T::Balance) -> u64 {
+    //     input.saturated_into::<u64>()
+    // }
+    //
+
+    pub fn moment_to_balance(m: &T::Moment) -> BalanceOf<T> {
+        let mut _b: BalanceOf<T> = Zero::zero();
+        if let Some(m) = Self::moment_to_u64(*m) {
+            if let Some(bo) = Self::u64_to_balance_option(m) {
+                _b = bo;
+            }
+        }
+
+        _b
     }
 }
 
@@ -2152,7 +2230,7 @@ where
         // Expiration timestamp - 0 for no expiry.
         expiration_time: Moment,
         // OrderType salt, used to prevent duplicate hashes.
-        salt: u32,
+        salt: u64,
     ) -> Self {
         Self {
             index: 0,
@@ -2273,7 +2351,7 @@ where
     // Expiration timestamp - 0 for no expiry.
     pub expiration_time: Moment,
     // OrderType salt, used to prevent duplicate hashes.
-    pub salt: u32,
+    pub salt: u64,
     pub registered: Moment,
 }
 
@@ -2328,7 +2406,7 @@ where
         // Expiration timestamp - 0 for no expiry.
         expiration_time: Moment,
         // OrderType salt, used to prevent duplicate hashes.
-        salt: u32,
+        salt: u64,
     ) -> Self {
         Self {
             index: 0,

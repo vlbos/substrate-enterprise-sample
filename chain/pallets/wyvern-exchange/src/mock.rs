@@ -1,10 +1,11 @@
 // Creating mock runtime here
 
+use crate as wyvern_exchange;
 use crate::{Module, Trait};
 use core::marker::PhantomData;
 use frame_support::{
-    impl_outer_event, impl_outer_dispatch,impl_outer_origin, parameter_types, traits::EnsureOrigin,
-    traits::Currency,traits::StorageMapShim, weights::Weight,
+    impl_outer_dispatch, impl_outer_event, impl_outer_origin, parameter_types, traits::Currency,
+    traits::EnsureOrigin, traits::StorageMapShim, weights::Weight,
 };
 use frame_system as system;
 use frame_system::RawOrigin;
@@ -14,7 +15,6 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     Perbill,
 };
-use crate as wyvern_exchange;
 
 impl_outer_origin! {
     pub enum Origin for Test {}
@@ -117,6 +117,14 @@ impl<T: Trait> EnsureOrigin<T::Origin> for MockOrigin<T> {
             r => Err(T::Origin::from(r)),
         })
     }
+}
+
+pub fn print_all_events() {
+    println!("------------------- Print Events Started -------------------");
+    for event in <system::Module<Test>>::events() {
+        println!("{:?}", event);
+    }
+    println!("------------------- Print Events Ended -------------------");
 }
 
 pub fn create_account_test(account_id: sr25519::Public) {
