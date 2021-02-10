@@ -54,12 +54,15 @@ rustup target add wasm32-unknown-unknown --toolchain nightly-2020-05-01-x86_64-u
 ```bash
 cargo build
 ```
-
+```bash
+ export CARGO_HTTP_MULTIPLEXING=false
+```
 ## Run
 
 You can start a development chain with:
 
 ```bash
+
 cargo run -- --dev
 ```
 

@@ -574,7 +574,7 @@ impl<T: Trait> Module<T> {
         extra: T::Moment,
         listing_time: T::Moment,
         expiration_time: T::Moment,
-    ) -> Result<BalanceOf<T>, Error<T>> {
+    ) -> BalanceOf<T> {
         Self::calculate_final_price(
             &side,
             &sale_kind,
@@ -582,7 +582,7 @@ impl<T: Trait> Module<T> {
             extra,
             listing_time,
             expiration_time,
-        )
+        ).unwrap()
     }
 
     //
@@ -598,7 +598,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Result<Vec<u8>, Error<T>> {
+    ) -> Vec<u8> {
         Self::hash_order(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -609,7 +609,7 @@ impl<T: Trait> Module<T> {
             &calldata,
             &replacement_pattern,
             &static_extradata,
-        ))
+        )).unwrap()
     }
 
     //#dev Call hash_to_sign - Solidity ABI encoding workaround:limitation, hopefully temporary.
@@ -624,7 +624,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Result<Vec<u8>, Error<T>> {
+    ) -> Vec<u8> {
         Self::hash_to_sign(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -635,7 +635,7 @@ impl<T: Trait> Module<T> {
             &calldata,
             &replacement_pattern,
             &static_extradata,
-        ))
+        )).unwrap()
     }
 
     //
@@ -652,7 +652,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Result<bool, Error<T>> {
+    ) -> bool {
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
             uints,
@@ -664,7 +664,7 @@ impl<T: Trait> Module<T> {
             &replacement_pattern,
             &static_extradata,
         );
-        Self::validate_order_parameters(&order)
+        Self::validate_order_parameters(&order).unwrap()
     }
 
     //
@@ -682,7 +682,7 @@ impl<T: Trait> Module<T> {
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
         sig: Signature,
-    ) -> Result<bool, Error<T>> {
+    ) -> bool {
         let order: OrderType<T::AccountId, T::Moment, BalanceOf<T>> = Self::build_order_type_arr(
             addrs,
             uints,
@@ -694,7 +694,7 @@ impl<T: Trait> Module<T> {
             &replacement_pattern,
             &static_extradata,
         );
-        Self::validate_order(&Self::hash_to_sign(&order)?, &order, &sig)
+        Self::validate_order(&Self::hash_to_sign(&order).unwrap(), &order, &sig).unwrap()
     }
 
     //
@@ -711,7 +711,7 @@ impl<T: Trait> Module<T> {
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    ) -> Result<BalanceOf<T>, Error<T>> {
+    ) -> BalanceOf<T> {
         Self::calculate_current_price(&Self::build_order_type_arr(
             addrs,
             uints,
@@ -722,7 +722,7 @@ impl<T: Trait> Module<T> {
             &calldata,
             &replacement_pattern,
             &static_extradata,
-        ))
+        )).unwrap()
     }
 
     //
@@ -739,7 +739,7 @@ impl<T: Trait> Module<T> {
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-    ) -> Result<bool, Error<T>> {
+    ) -> bool {
         let bs = Self::build_order_type_arr2(
             addrs,
             uints,
@@ -751,7 +751,7 @@ impl<T: Trait> Module<T> {
             &static_extradata_buy,
             &static_extradata_sell,
         );
-        Self::orders_can_match(&bs[0], &bs[1])
+        Self::orders_can_match(&bs[0], &bs[1]).unwrap()
     }
 
     //
@@ -805,7 +805,7 @@ impl<T: Trait> Module<T> {
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-    ) -> Result<BalanceOf<T>, Error<T>> {
+    ) -> BalanceOf<T> {
         let bs = Self::build_order_type_arr2(
             addrs,
             uints,
@@ -817,7 +817,7 @@ impl<T: Trait> Module<T> {
             &static_extradata_buy,
             &static_extradata_sell,
         );
-        Self::calculate_match_price(&bs[0], &bs[1])
+        Self::calculate_match_price(&bs[0], &bs[1]).unwrap()
     }
 
     //

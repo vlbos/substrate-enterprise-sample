@@ -70,6 +70,25 @@ package = 'pallet-orderbook'
 path = '../pallets/orderbook'
 version = '2.0.0'
 
+[dependencies.orderbook-runtime-api]
+default-features = false
+package = 'orderbook-runtime-api'
+path = '../pallets/orderbook/runtime-api'
+version = '2.0.0'
+
+
+[dependencies.wyvern-exchange]
+default-features = false
+package = 'pallet-wyvern-exchange'
+path = '../pallets/wyvern-exchange'
+version = '2.0.0'
+
+[dependencies.wyvern-exchange-runtime-api]
+default-features = false
+package = 'wyvern-exchange-runtime-api'
+path = '../pallets/wyvern-exchange/runtime-api'
+version = '2.0.0'
+
 [dependencies.product-registry]
 default-features = false
 package = 'pallet-product-registry'

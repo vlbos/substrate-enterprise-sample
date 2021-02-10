@@ -1257,6 +1257,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
+ "orderbook-runtime-api",
  "pallet-aura",
  "pallet-balances",
  "pallet-collective",
@@ -1275,6 +1276,7 @@ dependencies = [
  "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-wyvern-exchange",
  "parity-scale-codec",
  "serde",
  "sp-api",
@@ -1293,6 +1295,7 @@ dependencies = [
  "substrate-wasm-builder-runner",
  "sum-storage",
  "sum-storage-runtime-api",
+ "wyvern-exchange-runtime-api",
 ]
 
 [[package]]
@@ -3681,6 +3684,17 @@ name = "openssl-probe"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77af24da69f9d9341038eba93a073b1fdaaa1b788221b00a69bce9e762cb32de"
+
+[[package]]
+name = "orderbook-runtime-api"
+version = "2.0.0"
+dependencies = [
+ "pallet-orderbook",
+ "parity-scale-codec",
+ "serde_json",
+ "sp-api",
+ "sp-std",
+]
 
 [[package]]
 name = "owning_ref"
@@ -8310,6 +8324,17 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "wyvern-exchange-runtime-api"
+version = "2.0.0"
+dependencies = [
+ "pallet-wyvern-exchange",
+ "parity-scale-codec",
+ "serde_json",
+ "sp-api",
+ "sp-std",
 ]
 
 [[package]]

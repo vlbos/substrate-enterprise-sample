@@ -479,7 +479,11 @@ impl sum_storage::Trait for Runtime {
 }
 impl orderbook::Trait for Runtime {
     type Event = Event;
-    // type CreateRoleOrigin = registrar::EnsureOrg<Runtime>;
+}
+
+impl wyvern_exchange::Trait for Runtime {
+    type Event = Event;
+	type Currency = Balances;
 }
 
 construct_runtime!(
@@ -508,6 +512,7 @@ construct_runtime!(
         Registrar: registrar::{Module, Call, Storage, Event<T>, Config<T>},
         Rbac: rbac::{Module, Call, Storage, Event<T>, Config<T>},
         Orderbook: orderbook::{Module, Call, Storage, Event<T>},
+        WyvernExchange: wyvern_exchange::{Module, Call, Storage, Event<T>},
 		SumStorage: sum_storage::{Module, Call, Storage, Event},
     }
 );
@@ -679,4 +684,192 @@ impl_runtime_apis! {
 			SumStorage::get_sum()
 		}
 	}
+
+	impl orderbook_runtime_api::OrderbookApi<Block,AccountId, Moment> for Runtime {
+		  fn get_orders(
+        order_query: &Option<OrderQuery<AccountId>>,
+    ) -> Option<Vec<OrderJSONType<AccountId, Moment>>> {
+				  Orderbook::get_orders(
+        order_query
+    ) 
+		}
+	}
+
+	impl wyvern_exchange_runtime_api::OrderbookApi<Block,AccountId, Balance,Moment> for Runtime {
+		 fn calculate_final_price_ex(
+        side: Side,
+        sale_kind: SaleKind,
+        base_price: Balance,
+        extra: Moment,
+        listing_time: Moment,
+        expiration_time: Moment,
+    ) -> Balance{
+		WyvernExchange::calculate_final_price_ex(  side,
+        sale_kind,
+        base_price,
+        extra,
+        listing_time,
+        expiration_time)
+	}
+    fn hash_order_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
+    ) -> Vec<u8>{
+		 WyvernExchange::hash_order_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata)
+	}
+
+    fn hash_to_sign_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata,
+    ) -> Vec<u8>{
+		 WyvernExchange::hash_to_sign_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata)
+	}
+   fn validate_order_parameters_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
+    ) -> bool{
+		WyvernExchange::validate_order_parameters_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata)
+	}
+   fn validate_order_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
+        sig: Signature,
+    ) -> bool {
+		validate_order_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata,
+        sig)
+	}
+ fn calculate_current_price_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
+    ) -> Balance{
+		WyvernExchange::calculate_current_price_ex(
+        addrs,
+        uints,
+        fee_method,
+        side,
+        sale_kind,
+        how_to_call,
+        calldata,
+        replacement_pattern,
+        static_extradata)
+	}
+   fn orders_can_match_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_methods_sides_kinds_how_to_calls: Vec<u8>,
+        calldata_buy: Vec<u8>,
+        calldata_sell: Vec<u8>,
+        replacement_pattern_buy: Vec<u8>,
+        replacement_pattern_sell: Vec<u8>,
+        static_extradata_buy: Vec<u8>,
+        static_extradata_sell: Vec<u8>,
+    ) -> bool {
+		WyvernExchange::orders_can_match_ex(
+        addrs,
+        uints,
+        fee_methods_sides_kinds_how_to_calls,
+        calldata_buy,
+        calldata_sell,
+        replacement_pattern_buy,
+        replacement_pattern_sell,
+        static_extradata_buy,
+        static_extradata_sell)
+	}
+fn calculate_match_price_ex(
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_methods_sides_kinds_how_to_calls: Vec<u8>,
+        calldata_buy: Vec<u8>,
+        calldata_sell: Vec<u8>,
+        replacement_pattern_buy: Vec<u8>,
+        replacement_pattern_sell: Vec<u8>,
+        static_extradata_buy: Vec<u8>,
+        static_extradata_sell: Vec<u8>,
+    ) -> Balance 
+{
+		 WyvernExchange::calculate_match_price_ex(
+        addrs,
+        uints,
+        fee_methods_sides_kinds_how_to_calls,
+        calldata_buy,
+        calldata_sell,
+        replacement_pattern_buy,
+        replacement_pattern_sell,
+        static_extradata_buy,
+        static_extradata_sell)
+	
+	}
+	}
+
 }
