@@ -5,7 +5,9 @@
 
 use codec::{Decode, Encode};
 use core::result::Result;
-// use core::convert::TryInto;
+use core::convert::TryInto;
+// use sp_std::convert::{TryFrom, TryInto};
+
 use frame_support::{
     debug, decl_error, decl_event, decl_module, decl_storage,
     dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo},
@@ -27,7 +29,6 @@ use frame_support::{
     },
 };
 
-// use sp_std::convert::{TryFrom, TryInto};
 
 // use sp_runtime::{generic, MultiSignature, traits::{Verify, BlakeTwo256, IdentifyAccount}};
 
@@ -1032,17 +1033,17 @@ impl<T: Trait> Module<T> {
     }
 
     // An alterantive way to validate a signature is:
-
     // Import the codec and traits:
-
     // Example function to verify the signature.
 
     pub fn check_signature(
-        signature: &Signature,
-        msg: &[u8],
-        signer: &T::AccountId,
+    _signature: &Signature,
+        _msg: &[u8],
+        _signer: &T::AccountId,
     ) -> Result<(), Error<T>> {
-        // if signature.verify(msg, signer.into()) {
+// let mut bytes = [u8; 32];
+// T::AccountId::decode(&mut &bytes[..]).unwrap_or_default();
+        // if _signature.verify(_msg, _signer) {
         Ok(())
         // } else {
         //     Err(Error::<T>::OrderIdMissing.into())
@@ -2138,10 +2139,10 @@ impl<T: Trait> Module<T> {
         T::Moment::saturated_from(_input.into()) //.saturated_into()
     }
 
-    pub fn u64_to_balance_option(input: u64) -> Option<BalanceOf<T>> {
+    pub fn u64_to_balance_option(_input: u64) -> Option<BalanceOf<T>> {
         // use sp_std::convert::{TryFrom, TryInto};
-        // input.try_into().ok()
-        Some(Zero::zero())
+        _input.try_into().ok()
+        // Some(Zero::zero())
     }
 
     // Note the warning above about saturated conversions

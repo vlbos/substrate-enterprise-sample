@@ -254,7 +254,7 @@ impl<T: Trait> Module<T> {
     }
 
     pub fn get_orders(
-        order_query: &Option<OrderQuery<T>>,
+        order_query: &Option<OrderQuery<T::AccountId>>,
     ) -> Option<Vec<OrderJSONType<T::AccountId, T::Moment>>> {
         let mut order_arr: Vec<OrderJSONType<T::AccountId, T::Moment>> = Vec::new();
         // let mut index_arr: Vec<u64> = Vec::new();

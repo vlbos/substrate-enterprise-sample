@@ -43,6 +43,10 @@ pub use frame_support::{
 	},
 };
 
+use orderbook::{OrderQuery,OrderJSONType};
+
+use wyvern_exchange::{Side,SaleKind,FeeMethod,HowToCall};
+
 /// An index to a block.
 pub type BlockNumber = u32;
 
@@ -69,6 +73,8 @@ pub type Hash = sp_core::H256;
 /// Digest item type.
 pub type DigestItem = generic::DigestItem<Hash>;
 
+/// A timestamp: milliseconds since the unix epoch.
+pub type Moment = u64;
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -695,7 +701,7 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl wyvern_exchange_runtime_api::OrderbookApi<Block,AccountId, Balance,Moment> for Runtime {
+	impl wyvern_exchange_runtime_api::WyvernExchangeApi<Block,AccountId, Balance,Moment,Signature> for Runtime {
 		 fn calculate_final_price_ex(
         side: Side,
         sale_kind: SaleKind,
@@ -735,15 +741,15 @@ impl_runtime_apis! {
 	}
 
     fn hash_to_sign_ex(
-        addrs,
-        uints,
-        fee_method,
-        side,
-        sale_kind,
-        how_to_call,
-        calldata,
-        replacement_pattern,
-        static_extradata,
+ addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
     ) -> Vec<u8>{
 		 WyvernExchange::hash_to_sign_ex(
         addrs,
@@ -790,7 +796,7 @@ impl_runtime_apis! {
         static_extradata: Vec<u8>,
         sig: Signature,
     ) -> bool {
-		validate_order_ex(
+		WyvernExchange::validate_order_ex(
         addrs,
         uints,
         fee_method,
