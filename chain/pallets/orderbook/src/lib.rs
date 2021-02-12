@@ -1,7 +1,9 @@
 //! # Substrate Enterprise Sample - Order Post example pallet
-
 #![cfg_attr(not(feature = "std"), no_std)]
 
+
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use codec::{Decode, Encode};
 use core::result::Result;
 use frame_support::{
@@ -34,6 +36,7 @@ pub type FieldValue = Vec<u8>;
 // to be shared with other network participants, and remains largely static.
 // It can also be used for instance-level (lot) master data.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OrderJSONType<AccountId, Moment> {
     index: u64,
     // The order ID would typically be a GS1 GTIN (Global Trade Item Number),
@@ -51,7 +54,8 @@ pub struct OrderJSONType<AccountId, Moment> {
     registered: Moment,
 }
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode,Clone, PartialEq, Eq, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OrderQuery<AccountId> {
     limit: Option<u64>,
     offset: Option<u64>,
@@ -82,6 +86,7 @@ pub struct OrderQuery<AccountId> {
 
 // Contains a name-value pair for a order fielderty e.g. description: Ingredient ABC
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OrderField {
     // Name of the order fielderty e.g. desc or description
     name: FieldName,
@@ -254,7 +259,7 @@ impl<T: Trait> Module<T> {
     }
 
     pub fn get_orders(
-        order_query: &Option<OrderQuery<T::AccountId>>,
+        order_query: Option<OrderQuery<T::AccountId>>,
     ) -> Option<Vec<OrderJSONType<T::AccountId, T::Moment>>> {
         let mut order_arr: Vec<OrderJSONType<T::AccountId, T::Moment>> = Vec::new();
         // let mut index_arr: Vec<u64> = Vec::new();

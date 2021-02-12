@@ -26,6 +26,10 @@ structopt = '0.3.8'
 enterprise-sample-runtime = { path = '../runtime', version = '2.0.0' }
 sum-storage-rpc = { path = "../pallets/sum-storage/rpc" }
 sum-storage-runtime-api = { path = "../pallets/sum-storage/runtime-api" }
+orderbook-rpc = { path = "../pallets/orderbook/rpc" }
+orderbook-runtime-api = { path = "../pallets/orderbook/runtime-api" }
+wyvern-exchange-rpc = { path = "../pallets/wyvern-exchange/rpc" }
+wyvern-exchange-runtime-api = { path = "../pallets/wyvern-exchange/runtime-api" }
 
 # Substrate dependencies
 frame-benchmarking = '2.0.0'

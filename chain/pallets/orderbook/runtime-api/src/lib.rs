@@ -15,7 +15,7 @@ sp_api::decl_runtime_apis! {
 		Moment: Codec,
  {
 	  fn get_orders(
-        order_query: &Option<OrderQuery<AccountId>>,
+        order_query: Option<OrderQuery<AccountId>>,
     ) -> Option<Vec<OrderJSONType<AccountId, Moment>>>;
  }
 }

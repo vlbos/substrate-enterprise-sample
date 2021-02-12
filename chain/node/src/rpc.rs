@@ -13,8 +13,15 @@ use sp_blockchain::{Error as BlockChainError, HeaderMetadata, HeaderBackend};
 use sp_block_builder::BlockBuilder;
 pub use sc_rpc_api::DenyUnsafe;
 use sp_transaction_pool::TransactionPool;
+
+
 use sum_storage_rpc;
 use sum_storage_runtime_api;
+
+use orderbook_rpc;
+use orderbook_runtime_api;
+use wyvern_exchange_rpc;
+use wyvern_exchange_runtime_api;
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
@@ -37,6 +44,8 @@ pub fn create_full<C, P>(
 	C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
 	C::Api: BlockBuilder<Block>,
 	C::Api: sum_storage_runtime_api::SumStorageApi<Block>,
+C::Api: orderbook_runtime_api::OrderbookApi<Block,AccountId,Moment>,
+C::Api: wyvern_exchange_runtime_api::WyvernExchangeApi<Block,AccountId,Balance,Moment,Signature>,
 	P: TransactionPool + 'static,
 {
 	use substrate_frame_rpc_system::{FullSystem, SystemApi};
@@ -63,6 +72,14 @@ pub fn create_full<C, P>(
 	// `io.extend_with(YourRpcTrait::to_delegate(YourRpcStruct::new(ReferenceToClient, ...)));`
 	io.extend_with(
 		sum_storage_rpc::SumStorageApi::to_delegate(sum_storage_rpc::SumStorage::new(client))
+	);
+
+	io.extend_with(
+		orderbook_rpc::OrderybookApi::to_delegate(orderbook_rpc::Orderbook::new(client))
+	);
+
+	io.extend_with(
+		wyvern_exchange_rpc::WyvernExchangeApi::to_delegate(wyvern_exchange_rpc::WyvernExchange::new(client))
 	);
 
 	io

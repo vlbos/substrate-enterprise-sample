@@ -8,7 +8,7 @@ use sp_runtime::{generic::BlockId, traits::Block as BlockT};
 use std::sync::Arc;
 use wyvern_exchange_runtime_api::WyvernExchangeApi as WyvernExchangeRuntimeApi;
 use wyvern_exchange::{Side,SaleKind,FeeMethod,HowToCall};
-
+use codec::Codec;
 #[rpc]
 pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
 	#[rpc(name = "WyvernExchange_calculateFinalPriceEx")]
@@ -149,13 +149,17 @@ impl<C, M> WyvernExchange<C, M> {
 // 	}
 // }
 
-impl<C, Block> WyvernExchangeApi<<Block as BlockT>::Hash,AccountId,Balance,Moment,Signature> for WyvernExchange<C, Block>
+impl<C, Block,AccountId,Balance,Moment,Signature> WyvernExchangeApi<<Block as BlockT>::Hash,AccountId,Balance,Moment,Signature> for WyvernExchange<C, Block>
 where
 	Block: BlockT,
 	C: Send + Sync + 'static,
 	C: ProvideRuntimeApi<Block>,
 	C: HeaderBackend<Block>,
 	C::Api: WyvernExchangeRuntimeApi<Block,AccountId,Balance,Moment,Signature>,
+    AccountId:Codec,
+    Balance:Codec,
+    Moment:Codec,
+    Signature:Codec,
 {
  fn calculate_final_price_ex(&self,
         side: Side,
@@ -164,18 +168,18 @@ where
         extra: Moment,
         listing_time: Moment,
         expiration_time: Moment,
-    at: Option<BlockHash>) -> Result<Balance>{
+    at: Option<<Block as BlockT>::Hash>) -> Result<Balance>{
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.calculate_final_price_ex(  side,
+		let runtime_api_result = api.calculate_final_price_ex(&at,  side,
         sale_kind,
         base_price,
         extra,
         listing_time,
-        expiration_time,&at);
+        expiration_time);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -192,13 +196,13 @@ where
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    at: Option<BlockHash>) -> Result<Vec<u8>>{
+    at: Option<<Block as BlockT>::Hash>) -> Result<Vec<u8>>{
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.hash_order_ex(
+		let runtime_api_result = api.hash_order_ex(&at,
         addrs,
         uints,
         fee_method,
@@ -207,7 +211,7 @@ where
         how_to_call,
         calldata,
         replacement_pattern,
-        static_extradata,&at);
+        static_extradata);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -216,22 +220,22 @@ where
 	}
 
     fn hash_to_sign_ex(&self,
-        addrs,
-        uints,
-        fee_method,
-        side,
-        sale_kind,
-        how_to_call,
-        calldata,
-        replacement_pattern,
-        static_extradata,
-    at: Option<BlockHash>) -> Result<Vec<u8>>{
+        addrs: Vec<AccountId>,
+        uints: Vec<u64>,
+        fee_method: FeeMethod,
+        side: Side,
+        sale_kind: SaleKind,
+        how_to_call: HowToCall,
+        calldata: Vec<u8>,
+        replacement_pattern: Vec<u8>,
+        static_extradata: Vec<u8>,
+    at: Option<<Block as BlockT>::Hash>) -> Result<Vec<u8>>{
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.hash_to_sign_ex(
+		let runtime_api_result = api.hash_to_sign_ex(&at,
         addrs,
         uints,
         fee_method,
@@ -240,7 +244,7 @@ where
         how_to_call,
         calldata,
         replacement_pattern,
-        static_extradata,&at);
+        static_extradata);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -257,13 +261,13 @@ where
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    at: Option<BlockHash>) -> Result<bool>{
+    at: Option<<Block as BlockT>::Hash>) -> Result<bool>{
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.validate_order_parameters_ex(
+		let runtime_api_result = api.validate_order_parameters_ex(&at,
         addrs,
         uints,
         fee_method,
@@ -272,7 +276,7 @@ where
         how_to_call,
         calldata,
         replacement_pattern,
-        static_extradata,&at);
+        static_extradata);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -290,13 +294,13 @@ where
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
         sig: Signature,
-    at: Option<BlockHash>) -> Result<bool> {
+    at: Option<<Block as BlockT>::Hash>) -> Result<bool> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.validate_order_ex(
+		let runtime_api_result = api.validate_order_ex(&at,
         addrs,
         uints,
         fee_method,
@@ -306,7 +310,7 @@ where
         calldata,
         replacement_pattern,
         static_extradata,
-        sig,&at);
+        sig);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -323,13 +327,13 @@ where
         calldata: Vec<u8>,
         replacement_pattern: Vec<u8>,
         static_extradata: Vec<u8>,
-    at: Option<BlockHash>) -> Result<Balance>{
+    at: Option<<Block as BlockT>::Hash>) -> Result<Balance>{
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.calculate_current_price_ex(
+		let runtime_api_result = api.calculate_current_price_ex(&at,
         addrs,
         uints,
         fee_method,
@@ -338,7 +342,7 @@ where
         how_to_call,
         calldata,
         replacement_pattern,
-        static_extradata,&at);
+        static_extradata);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -355,13 +359,13 @@ where
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-    at: Option<BlockHash>) -> Result<bool> {
+    at: Option<<Block as BlockT>::Hash>) -> Result<bool> {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.orders_can_match_ex(
+		let runtime_api_result = api.orders_can_match_ex(&at,
         addrs,
         uints,
         fee_methods_sides_kinds_how_to_calls,
@@ -370,7 +374,7 @@ where
         replacement_pattern_buy,
         replacement_pattern_sell,
         static_extradata_buy,
-        static_extradata_sell,&at);
+        static_extradata_sell);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),
@@ -387,14 +391,14 @@ fn calculate_match_price_ex(&self,
         replacement_pattern_sell: Vec<u8>,
         static_extradata_buy: Vec<u8>,
         static_extradata_sell: Vec<u8>,
-    at: Option<BlockHash>) -> Result<Balance> 
+    at: Option<<Block as BlockT>::Hash>) -> Result<Balance> 
 {
 		let api = self.client.runtime_api();
 		let at = BlockId::hash(at.unwrap_or_else(||
 			// If the block hash is not supplied assume the best block.
 			self.client.info().best_hash));
 
-		let runtime_api_result = api.calculate_match_price_ex(
+		let runtime_api_result = api.calculate_match_price_ex(&at,
         addrs,
         uints,
         fee_methods_sides_kinds_how_to_calls,
@@ -403,7 +407,7 @@ fn calculate_match_price_ex(&self,
         replacement_pattern_buy,
         replacement_pattern_sell,
         static_extradata_buy,
-        static_extradata_sell,&at);
+        static_extradata_sell);
 		runtime_api_result.map_err(|e| RpcError {
 			code: ErrorCode::ServerError(9876), // No real reason for this value
 			message: "Something wrong".into(),

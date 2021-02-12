@@ -3,13 +3,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![recursion_limit = "512"]
 
+
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use codec::{Decode, Encode};
 use core::result::Result;
 use core::convert::TryInto;
 // use sp_std::convert::{TryFrom, TryInto};
 
-use frame_support::{
-    debug, decl_error, decl_event, decl_module, decl_storage,
+use frame_support::{    debug, decl_error, decl_event, decl_module, decl_storage,
     dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo},
     ensure,
     sp_io::hashing::keccak_256,
@@ -74,14 +76,17 @@ pub type FieldValue = Vec<u8>;
 
 pub type Bytes = Vec<u8>;
 
+
 //sale kind interface
 #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum Side {
     Buy,
     Sell,
 }
 
 #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum SaleKind {
     FixedPrice,
     DutchAuction,
@@ -90,12 +95,14 @@ pub enum SaleKind {
 // // Fee method: protocol fee or split fee.
 // enum FeeMethod { ProtocolFee, SplitFee }
 #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum FeeMethod {
     ProtocolFee,
     SplitFee,
 }
 
 #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum HowToCall {
     Call,
     DelegateCall,

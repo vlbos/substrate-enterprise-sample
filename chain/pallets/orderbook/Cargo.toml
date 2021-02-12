@@ -8,6 +8,11 @@ homepage = 'https://substrate.dev'
 repository = 'https://github.com/vlbos/orderbook/'
 license = 'Unlicense'
 
+# [dependencies.serde]
+# features = ['derive']
+# optional = true
+# version = '1.0.101'
+
 [dependencies.codec]
 default-features = false
 features = ['derive']
@@ -22,6 +27,13 @@ version = '2.0.0'
 [dependencies]
 frame-support = { default-features = false, version = '2.0.0' }
 frame-system = { default-features = false, version = '2.0.0' }
+# serde = { version = "1.0.123", default-features = false }
+# serde_derive = { version = "1.0.123", optional = true }
+# serde = { features = ['derive'], optional = true, version = '1.0.116' }
+# serde = { version = "1.0.114", optional = true }
+# serde = { features = ['derive'], optional = true, version = '1.0.106' }
+# serde = "1"
+serde = { version = "1.0", default-features = false, features = ['derive'],optional = true }
 
 [dev-dependencies]
 sp-core = { default-features = false, version = '2.0.0' }
@@ -32,6 +44,9 @@ sp-std = {  default-features = false,version = '2.0.0' }
 [features]
 default = ['std']
 std = [
+# "serde_derive",
+# "serde/std",
+"serde",
     'codec/std',
     'frame-support/std',
     'frame-system/std',
