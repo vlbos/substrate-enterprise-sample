@@ -433,6 +433,7 @@ impl pallet_did::Trait for Runtime {
     type Event = Event;
     type Public = MultiSigner;
     type Signature = Signature;
+    type Time = Timestamp;
 }
 
 impl registrar::Trait for Runtime {
@@ -693,7 +694,7 @@ impl_runtime_apis! {
 
 	impl orderbook_runtime_api::OrderbookApi<Block,AccountId, Moment> for Runtime {
 		  fn get_orders(
-        order_query: &Option<OrderQuery<AccountId>>,
+        order_query: Option<OrderQuery<AccountId>>,
     ) -> Option<Vec<OrderJSONType<AccountId, Moment>>> {
 				  Orderbook::get_orders(
         order_query

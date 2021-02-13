@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use enterprise_sample_runtime::{opaque::Block, AccountId, Balance, Index};
+use enterprise_sample_runtime::{opaque::Block, AccountId, Balance,Moment,Signature,Index};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error as BlockChainError, HeaderMetadata, HeaderBackend};
 use sp_block_builder::BlockBuilder;
@@ -71,15 +71,15 @@ C::Api: wyvern_exchange_runtime_api::WyvernExchangeApi<Block,AccountId,Balance,M
 	// to call into the runtime.
 	// `io.extend_with(YourRpcTrait::to_delegate(YourRpcStruct::new(ReferenceToClient, ...)));`
 	io.extend_with(
-		sum_storage_rpc::SumStorageApi::to_delegate(sum_storage_rpc::SumStorage::new(client))
+		sum_storage_rpc::SumStorageApi::to_delegate(sum_storage_rpc::SumStorage::new(client.clone()))
 	);
 
 	io.extend_with(
-		orderbook_rpc::OrderybookApi::to_delegate(orderbook_rpc::Orderbook::new(client))
+		orderbook_rpc::OrderbookApi::to_delegate(orderbook_rpc::Orderbook::new(client.clone()))
 	);
 
 	io.extend_with(
-		wyvern_exchange_rpc::WyvernExchangeApi::to_delegate(wyvern_exchange_rpc::WyvernExchange::new(client))
+		wyvern_exchange_rpc::WyvernExchangeApi::to_delegate(wyvern_exchange_rpc::WyvernExchange::new(client.clone()))
 	);
 
 	io
