@@ -42,7 +42,7 @@ pub struct OrderJSONType<AccountId, Moment> {
     // The order ID would typically be a GS1 GTIN (Global Trade Item Number),
     // or ASIN (Amazon Standard Identification Number), or similar,
     // a numeric or alpha-numeric code with a well-defined data structure.
-    id: OrderId,
+    orderId: OrderId,
     // This is account that represents the owner of this order, as in
     // the manufacturer or supplier providing this order within the value chain.
     owner: AccountId,
@@ -152,18 +152,18 @@ decl_module! {
         fn deposit_event() = default;
 
         #[weight = 10_000]
-        pub fn post_order(origin, id: OrderId, owner: T::AccountId, fields: Option<Vec<OrderField>>) -> dispatch::DispatchResult {
+        pub fn post_order(origin, orderId: OrderId, owner: T::AccountId, fields: Option<Vec<OrderField>>) -> dispatch::DispatchResult {
             // T::CreateRoleOrigin::ensure_origin(origin.clone())?;
             let who = ensure_signed(origin)?;
 
             // Validate order ID
-            Self::validate_order_id(&id)?;
+            Self::validate_order_id(&orderId)?;
 
             // Validate order fields
             Self::validate_order_fields(&fields)?;
 
             // Check order doesn't exist yet (1 DB read)
-            Self::validate_new_order(&id)?;
+            Self::validate_new_order(&orderId)?;
 
 
 
@@ -198,7 +198,7 @@ if let Some(fields) = &fields {
 
             // Create a order instance
             let order = Self::new_order()
-                .identified_by(id.clone())
+                .identified_by(orderId.clone())
                 .owned_by(owner.clone())
                 .registered_on(<timestamp::Module<T>>::now())
                 .with_fields(fields)
@@ -206,13 +206,13 @@ if let Some(fields) = &fields {
 
             // Add order & ownerOf (3 DB writes)
             <Orders<T>>::insert(next_id, order);
-            <Orderi>::insert(&id, next_id);
-            // <OrdersOfOrganization<T>>::append(&owner, &id);
+            <Orderi>::insert(&orderId, next_id);
+            // <OrdersOfOrganization<T>>::append(&owner, &orderId);
 
 
-               <OwnerOf<T>>::insert(&id, &owner);
+               <OwnerOf<T>>::insert(&orderId, &owner);
 
-            Self::deposit_event(RawEvent::OrderPosted(who, id, owner));
+            Self::deposit_event(RawEvent::OrderPosted(who, orderId, owner));
 
             Ok(())
         }
@@ -225,16 +225,16 @@ impl<T: Trait> Module<T> {
         OrderBuilder::<T::AccountId, T::Moment>::default()
     }
 
-    pub fn validate_order_id(id: &[u8]) -> Result<(), Error<T>> {
+    pub fn validate_order_id(orderId: &[u8]) -> Result<(), Error<T>> {
         // Basic order ID validation
-        ensure!(!id.is_empty(), Error::<T>::OrderIdMissing);
-        ensure!(id.len() <= ORDER_ID_MAX_LENGTH, Error::<T>::OrderIdTooLong);
+        ensure!(!orderId.is_empty(), Error::<T>::OrderIdMissing);
+        ensure!(orderId.len() <= ORDER_ID_MAX_LENGTH, Error::<T>::OrderIdTooLong);
         Ok(())
     }
 
-    pub fn validate_new_order(id: &[u8]) -> Result<(), Error<T>> {
+    pub fn validate_new_order(orderId: &[u8]) -> Result<(), Error<T>> {
         // Order existence check
-        ensure!(!<Orderi>::contains_key(id), Error::<T>::OrderIdExists);
+        ensure!(!<Orderi>::contains_key(orderId), Error::<T>::OrderIdExists);
         Ok(())
     }
 
@@ -334,7 +334,7 @@ where
     Moment: Default,
 {
     index: u64,
-    id: OrderId,
+    orderId: OrderId,
     owner: AccountId,
     fields: Option<Vec<OrderField>>,
     registered: Moment,
@@ -350,8 +350,8 @@ where
         self
     }
 
-    pub fn identified_by(mut self, id: OrderId) -> Self {
-        self.id = id;
+    pub fn identified_by(mut self, orderId: OrderId) -> Self {
+        self.orderId = orderId;
         self
     }
 
@@ -373,7 +373,7 @@ where
     pub fn build(self) -> OrderJSONType<AccountId, Moment> {
         OrderJSONType::<AccountId, Moment> {
             index: self.index,
-            id: self.id,
+            orderId: self.orderId,
             owner: self.owner,
             fields: self.fields,
             registered: self.registered,

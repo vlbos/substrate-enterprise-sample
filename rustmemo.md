@@ -70,4 +70,9 @@ Detailed logs may be shown by running the node with the following environment va
 
 ```bash
 purge-chain
+
+./target/release/xxx purge-chain --dev
+
+WASM_BUILD_TOOLCHAIN=nightly-2020-10-05 cargo run --release -- --dev --tmp
+
 ```

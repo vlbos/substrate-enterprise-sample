@@ -8,8 +8,10 @@ import Products from './Products';
 import Shipments from './Shipments';
 import TopNavMenu from './TopNavMenu';
 import Tracking from './Tracking';
+import Orderbook from './Orderbook';
+import WyvernExchange from './WyvernExchange';
 
 export {
   AccountSelector, BlockNumber, Events, Members, NodeInfo, Organizations, Products, Shipments,
-  TopNavMenu, Tracking
+  TopNavMenu, Tracking, Orderbook, WyvernExchange
 };

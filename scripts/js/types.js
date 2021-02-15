@@ -24,13 +24,38 @@ module.exports = {
     value: "PropValue",
   },
   ProductId: "Vec<u8>",
-OrderId: "Vec<u8>",
   Product: {
     id: "ProductId",
     owner: "AccountId",
     props: "Option<Vec<ProductProperty>>",
     registered: "Moment",
   },
+OrderId: "Vec<u8>",
+    FieldName: "Vec<u8>",
+    FieldValue: "Vec<u8>",
+    OrderField: {
+      name: "FieldName",
+      value: "FieldValue"
+    },
+    OrderJSONType: {
+      index: "u64",
+      id: "OrderId",
+      owner: "AccountId",
+      fields: "Option<Vec<OrderField>>",
+      registered: "Moment"
+    },
+    Side: {
+      _enum: ["Buy", "Sell"]
+    },
+    SaleKind: {
+      _enum: ["FixedPrice", "DutchAuction"]
+    },
+    FeeMethod: {
+      _enum: ["ProtocolFee", "SplitFee"]
+    },
+    HowToCall: {
+      _enum: ["Call", "DelegateCall"]
+    },
   Identifier: "Vec<u8>",
   Decimal: "i32",
   ShipmentId: "Identifier",

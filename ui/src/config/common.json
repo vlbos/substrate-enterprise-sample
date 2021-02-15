@@ -26,6 +26,33 @@
       "name": "PropName",
       "value": "PropValue"
     },
+
+    "OrderId": "Vec<u8>",
+    "FieldName": "Vec<u8>",
+    "FieldValue": "Vec<u8>",
+    "OrderField": {
+      "name": "FieldName",
+      "value": "FieldValue"
+    },
+    "OrderJSONType": {
+      "index": "u64",
+      "id": "OrderId",
+      "owner": "AccountId",
+      "fields": "Option<Vec<OrderField>>",
+      "registered": "Moment"
+    },
+    "Side": {
+      "_enum": ["Buy", "Sell"]
+    },
+    "SaleKind": {
+      "_enum": ["FixedPrice", "DutchAuction"]
+    },
+    "FeeMethod": {
+      "_enum": ["ProtocolFee", "SplitFee"]
+    },
+    "HowToCall": {
+      "_enum": ["Call", "DelegateCall"]
+    },
     "ProductId": "Vec<u8>",
     "Product": {
       "id": "ProductId",
@@ -39,11 +66,7 @@
     "ShippingEventIndex": "u128",
     "DeviceId": "Identifier",
     "ShipmentStatus": {
-      "_enum": [
-        "Pending",
-        "InTransit",
-        "Delivered"
-      ]
+      "_enum": ["Pending", "InTransit", "Delivered"]
     },
     "Shipment": {
       "id": "ShipmentId",
@@ -54,19 +77,10 @@
       "delivered": "Option<Moment>"
     },
     "ShippingOperation": {
-      "_enum": [
-        "Pickup",
-        "Scan",
-        "Deliver"
-      ]
+      "_enum": ["Pickup", "Scan", "Deliver"]
     },
     "ShippingEventType": {
-      "_enum": [
-        "ShipmentRegistration",
-        "ShipmentPickup",
-        "ShipmentScan",
-        "ShipmentDeliver"
-      ]
+      "_enum": ["ShipmentRegistration", "ShipmentPickup", "ShipmentScan", "ShipmentDeliver"]
     },
     "ShippingEvent": {
       "event_type": "ShippingEventType",
@@ -80,14 +94,7 @@
       "longitude": "Decimal"
     },
     "ReadingType": {
-      "_enum": [
-        "Humidity",
-        "Pressure",
-        "Shock",
-        "Tilt",
-        "Temperature",
-        "Vibration"
-      ]
+      "_enum": ["Humidity", "Pressure", "Shock", "Tilt", "Temperature", "Vibration"]
     },
     "Reading": {
       "device_id": "DeviceId",
@@ -96,10 +103,7 @@
       "value": "Decimal"
     },
     "Permission": {
-      "_enum": [
-        "Execute",
-        "Manage"
-      ]
+      "_enum": ["Execute", "Manage"]
     },
     "Role": {
       "pallet": "Vec<u8>",
@@ -107,5 +111,348 @@
     },
     "Keys": "SessionKeys2"
   },
-  "RPC": {}
+  "RPC": {
+    "orderbook": {
+      "getOrders": {
+        "description": "Doubles the parameter",
+        "params": [
+          {
+            "name": "order_query",
+            "type": "Option<OrderQuery<AccountId>>"
+          }
+        ],
+        "type": "Option<Vec<OrderJSONType<AccountId, Moment>>>"
+      }
+    },
+    "wyvernExchange": {
+      "calculateFinalPriceEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "base_price",
+            "type": "Balance"
+          },
+          {
+            "name": "extra",
+            "type": "Moment"
+          },
+          {
+            "name": "listing_time",
+            "type": "Moment"
+          },
+          {
+            "name": "expiration_time",
+            "type": "Moment"
+          }
+        ],
+        "type": "Balance"
+      }, 
+"hashOrderEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_method",
+            "type": "FeeMethod"
+          },
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "how_to_call",
+            "type": "HowToCall"
+          },
+          {
+            "name": "calldata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "Vec<u8>"
+      }, 
+"hashToSignEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_method",
+            "type": "FeeMethod"
+          },
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "how_to_call",
+            "type": "HowToCall"
+          },
+          {
+            "name": "calldata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "Vec<u8>"
+      }, 
+"validateOrderParametersEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_method",
+            "type": "FeeMethod"
+          },
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "how_to_call",
+            "type": "HowToCall"
+          },
+          {
+            "name": "calldata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "bool"
+      }, 
+"validateOrderEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_method",
+            "type": "FeeMethod"
+          },
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "how_to_call",
+            "type": "HowToCall"
+          },
+          {
+            "name": "calldata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "sig",
+            "type": "Signature"
+          }
+        ],
+        "type": "bool"
+      }, 
+"calculateCurrentPriceEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_method",
+            "type": "FeeMethod"
+          },
+          {
+            "name": "side",
+            "type": "Side"
+          },
+          {
+            "name": "sale_kind",
+            "type": "SaleKind"
+          },
+          {
+            "name": "how_to_call",
+            "type": "HowToCall"
+          },
+          {
+            "name": "calldata",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "Balance"
+      }, 
+"ordersCanMatchEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+          {
+            "name": "fee_methods_sides_kinds_how_to_calls",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "calldata_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "calldata_sell",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern_sell",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata_sell",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "Balance"
+      },
+"calculateMatchPriceEx": {
+        "description": "Gets the sum of the two storage values in sum-storage pallet via a runtime api.",
+        "params": [
+         {
+            "name": "addrs",
+            "type": "Vec<AccountId>"
+          },
+          {
+            "name": "uints",
+            "type": "Vec<u64>"
+          },
+            {
+            "name": "fee_methods_sides_kinds_how_to_calls",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "calldata_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "calldata_sell",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "replacement_pattern_sell",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata_buy",
+            "type": "Vec<u8>"
+          },
+          {
+            "name": "static_extradata_sell",
+            "type": "Vec<u8>"
+          }
+        ],
+        "type": "Balance"
+      }
+    }
+  }
 }

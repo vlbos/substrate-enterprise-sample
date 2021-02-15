@@ -77,6 +77,7 @@ pub type FieldValue = Vec<u8>;
 pub type Bytes = Vec<u8>;
 
 
+
 //sale kind interface
 #[derive(Encode, Decode, Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]

@@ -11,7 +11,7 @@ use wyvern_exchange::{Side,SaleKind,FeeMethod,HowToCall};
 use codec::Codec;
 #[rpc]
 pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
-	#[rpc(name = "WyvernExchange_calculateFinalPriceEx")]
+	#[rpc(name = "wyvernExchange_calculateFinalPriceEx")]
   fn calculate_final_price_ex(&self,
         side: Side,
         sale_kind: SaleKind,
@@ -21,7 +21,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         expiration_time: Moment,
     at: Option<BlockHash>) -> Result<Balance>;
 
-	#[rpc(name = "WyvernExchange_hashOrderEx")]
+	#[rpc(name = "wyvernExchange_hashOrderEx")]
     fn hash_order_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -34,7 +34,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         static_extradata: Vec<u8>,
     at: Option<BlockHash>) -> Result<Vec<u8>>;
 
-#[rpc(name = "WyvernExchange_hashToSignEx")]
+#[rpc(name = "wyvernExchange_hashToSignEx")]
     fn hash_to_sign_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -47,7 +47,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         static_extradata: Vec<u8>,
     at: Option<BlockHash>) -> Result<Vec<u8>>;
 
-#[rpc(name = "WyvernExchange_validateOrderParametersEx")]
+#[rpc(name = "wyvernExchange_validateOrderParametersEx")]
    fn validate_order_parameters_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -60,7 +60,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         static_extradata: Vec<u8>,
     at: Option<BlockHash>) -> Result<bool>;
 
-#[rpc(name = "WyvernExchange_validateOrderEx")]
+#[rpc(name = "wyvernExchange_validateOrderEx")]
    fn validate_order_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -74,7 +74,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         sig: Signature,
     at: Option<BlockHash>) -> Result<bool> ;
 
-#[rpc(name = "WyvernExchange_calculateCurrentPriceEx")]
+#[rpc(name = "wyvernExchange_calculateCurrentPriceEx")]
  fn calculate_current_price_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -87,7 +87,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         static_extradata: Vec<u8>,
     at: Option<BlockHash>) -> Result<Balance>;
 
-#[rpc(name = "WyvernExchange_ordersCanMatchEx")]
+#[rpc(name = "wyvernExchange_ordersCanMatchEx")]
    fn orders_can_match_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
@@ -100,7 +100,7 @@ pub trait WyvernExchangeApi<BlockHash,AccountId,Balance,Moment,Signature> {
         static_extradata_sell: Vec<u8>,
     at: Option<BlockHash>) -> Result<bool> ;
 
-#[rpc(name = "WyvernExchange_calculateMatchPriceEx")]
+#[rpc(name = "wyvernExchange_calculateMatchPriceEx")]
 fn calculate_match_price_ex(&self,
         addrs: Vec<AccountId>,
         uints: Vec<u64>,
